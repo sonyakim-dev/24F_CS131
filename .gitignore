@@ -1,0 +1,5 @@
+./test.hs
+./test.py
+__pycache__/*
+parser.out
+parsetab.py
