@@ -114,7 +114,7 @@ class Interpreter(InterpreterBase):
             super().error(ErrorType.TYPE_ERROR, "If condition must be a boolean")
         
         # new child scope for if statement body
-        self.env = EnvironmentManager(self.env)
+        self.env = self.env.begin_scope()
         
         result, ret = Value(Type.NIL, None), ExecStatus.CONTINUE
         if condition.value():
@@ -146,7 +146,7 @@ class Interpreter(InterpreterBase):
             if condition_result.value() is False: break
             
             # new child scope for for loop body
-            self.env = EnvironmentManager(self.env)
+            self.env = self.env.begin_scope()
             result, ret = self.__run_statement_nodes(for_node.get("statements"))
             self.env = self.env.end_scope()
             if ret == ExecStatus.RETURN: break
