@@ -1,5 +1,5 @@
 ./test.hs
 ./test.py
-__pycache__/*
+__pycache__/
 parser.out
 parsetab.py
