@@ -89,7 +89,7 @@ class Interpreter(InterpreterBase):
                 param_names = [arg_node.get("name") for arg_node in func_node.get("args")]
                 arg_values = [self.__eval_expr(arg) for arg in fcall_node.get("args")]
                 
-                # set new environment scope for function call
+                # new environment for function call
                 prev_env = self.env
                 self.env = EnvironmentManager()
                 
@@ -99,11 +99,15 @@ class Interpreter(InterpreterBase):
 
                 if self.trace_output: self.env._print(func_name) # debug purpose
                 
-                result, _ = self.__run_statement_nodes(func_node.get("statements"))
+                # new child scope for function body
+                self.env = self.env.begin_scope()
+                result, ret = self.__run_statement_nodes(func_node.get("statements"))
+                self.env = self.env.end_scope()
+                
                 self.env = prev_env
                 
-                return result
-        
+                return result, ret
+
     def __call_if(self, if_node: Element):
         condition = self.__eval_expr(if_node.get("condition"))
         if condition.type() != Type.BOOL:
@@ -120,8 +124,9 @@ class Interpreter(InterpreterBase):
         
         self.env = self.env.end_scope()
 
-        if ret: return result, True
-        else: return None, False
+        # if ret: return result, True
+        # else: return None, False
+        return result, ret
         
     def __call_for(self, for_node: Element) -> Value:
         init = for_node.get("init")
@@ -149,6 +154,8 @@ class Interpreter(InterpreterBase):
             self.env = self.env.end_scope()
             self.__assign(update)
 
+        # if ret: return result, True
+        # else: return None, False
         return result, ret
     
     def __call_return(self, return_node: Element) -> Value:

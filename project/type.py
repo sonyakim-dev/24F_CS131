@@ -42,7 +42,8 @@ def get_printable(val):
         case Type.BOOL:
             return "true" if val.value() else "false"
         case _: #FIXME:
-            raise ValueError("Not printable type")
+            return "nil"
+            # raise ValueError("Not printable type")
 
 class Statement:
     VAR_DEF = "vardef"

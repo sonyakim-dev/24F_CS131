@@ -35,8 +35,8 @@ class EnvironmentManager:
             return True
         return False
         
-    def begin_scope(self, enclose=False):
-        return EnvironmentManager(self) if enclose else EnvironmentManager()
+    def begin_scope(self):
+        return EnvironmentManager(self)
     
     def end_scope(self):
         return self.enclosing if self.enclosing else self
@@ -44,9 +44,9 @@ class EnvironmentManager:
     def _print(self, env_name=None):
         print(f"-----{env_name}-----")
         if self.enclosing:
-            print('-ENCLOSIMG-')
+            print('!ENCLOSIMG!')
             self.enclosing._print()
-        print('-LOCAL-')
+        print('!LOCAL!')
         for key, item in self.environment.items():
             print(f"{key}: {item.value()}")
         print("----------------")
