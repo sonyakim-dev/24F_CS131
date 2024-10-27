@@ -1,3 +1,4 @@
+import re
 from functools import reduce
 from typing import Any
 
@@ -73,13 +74,13 @@ class Interpreter(InterpreterBase):
         if not self.env.assign(var_name, var_value):
             super().error(ErrorType.NAME_ERROR, f"Variable {var_name} has not been defined")
 
-    def __call_func(self, fcall_node: Element) -> Value:
+    def __call_func(self, fcall_node: Element):
         func_name = fcall_node.get("name")
         match func_name:
             case "print":
-                return self.__call_print(fcall_node)
+                return self.__call_print(fcall_node), False
             case "inputi" | "inputs":
-                return self.__call_input(fcall_node)
+                return self.__call_input(fcall_node), False
             case _: # user-defined function
                 func_hash = (func_name, len(fcall_node.get("args")))
                 if func_hash not in self.function_table:
@@ -124,8 +125,6 @@ class Interpreter(InterpreterBase):
         
         self.env = self.env.end_scope()
 
-        # if ret: return result, True
-        # else: return None, False
         return result, ret
         
     def __call_for(self, for_node: Element) -> Value:
@@ -152,10 +151,10 @@ class Interpreter(InterpreterBase):
             self.env = EnvironmentManager(self.env)
             result, ret = self.__run_statement_nodes(for_node.get("statements"))
             self.env = self.env.end_scope()
+            if ret: break
+            
             self.__assign(update)
 
-        # if ret: return result, True
-        # else: return None, False
         return result, ret
     
     def __call_return(self, return_node: Element) -> Value:
@@ -177,7 +176,7 @@ class Interpreter(InterpreterBase):
                 super().error(ErrorType.NAME_ERROR, f"Variable {var_name} not found")
             return val
         if expr == Statement.FUNC_CALL:
-            return self.__call_func(expr_node)
+            return self.__call_func(expr_node)[0]
         if expr in Interpreter.UNA_OPS:
             return self.__eval_unary_op(expr_node)
         if expr in Interpreter.BIN_OPS:
