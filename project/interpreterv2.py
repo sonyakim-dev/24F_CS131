@@ -1,24 +1,18 @@
-import re
 from functools import reduce
-from typing import Any
 
 from brewparse import parse_program
 from element import Element
 from env import EnvironmentManager
 from intbase import ErrorType, InterpreterBase
-from ops import OP_TO_LAMBDA
 from type import *
 
 
 class Interpreter(InterpreterBase):
-    UNA_OPS = {"neg", "!"}
-    BIN_OPS = {"+", "-", "*", "/", ">=", "<=", ">", "<", "||", "&&", "==", "!="}
-
     def __init__(self, console_output=True, inp=None, trace_output=False):
         super().__init__(console_output, inp)
         self.trace_output = trace_output # debug purpose
         self.env = EnvironmentManager() # store variables
-        self.function_table: dict[(str, int), Element] = {} # key: (func name, arg count)
+        self.function_table: dict[tuple[str, int], Element] = {} # key: (func name, arg count)
 
     def run(self, program) -> None:
         ast = parse_program(program) # generate Abstract Syntax Tree of the program
@@ -40,9 +34,10 @@ class Interpreter(InterpreterBase):
             
         return self.function_table[func_key]
     
-    def __run_statement_nodes(self, statement_nodes: Element):      
+    def __run_statement_nodes(self, statement_nodes: list[Element]) -> tuple[Value, ExecStatus]:      
         for statement in statement_nodes:
-            if self.trace_output: print(" STAT.. ", statement)
+            if self.trace_output: print(" 👩‍💻 ", statement) # debug purpose
+            
             category = statement.elem_type
             match category:
                 case Statement.VAR_DEF:
@@ -53,15 +48,18 @@ class Interpreter(InterpreterBase):
                     self.__call_func(statement)
                 case Statement.IF_STATEMENT:
                     result, ret = self.__call_if(statement)
-                    if ret: return result, ret
+                    if ret == ExecStatus.RETURN: # return early if return statement is encountered
+                        return result, ret
                 case Statement.FOR_STATEMENT:
                     result, ret = self.__call_for(statement)
-                    if ret: return result, ret
-                case Statement.RETURN:
-                    return self.__call_return(statement), True
+                    if ret == ExecStatus.RETURN: # return early if return statement is encountered
+                        return result, ret
+                case Statement.RETURN: # return immediately
+                    return self.__call_return(statement), ExecStatus.RETURN
                 case _:
                     super().error(ErrorType.TYPE_ERROR, f"Unknown statement type: {category}")
-        return Value(Type.NIL, None), False
+                    
+        return Value(Type.NIL, None), ExecStatus.CONTINUE
 
     def __var_def(self, vardef_node: Element) -> None:
         var_name = vardef_node.get("name")
@@ -69,18 +67,18 @@ class Interpreter(InterpreterBase):
             super().error(ErrorType.NAME_ERROR, f"Variable {var_name} has already been defined")
 
     def __assign(self, assign_node: Element) -> None:
-        var_name = assign_node.get("name")
+        var_name: str = assign_node.get("name")
         var_value = self.__eval_expr(assign_node.get("expression"))
         if not self.env.assign(var_name, var_value):
             super().error(ErrorType.NAME_ERROR, f"Variable {var_name} has not been defined")
 
-    def __call_func(self, fcall_node: Element):
+    def __call_func(self, fcall_node: Element) -> tuple[Value, ExecStatus]:
         func_name = fcall_node.get("name")
         match func_name:
             case "print":
-                return self.__call_print(fcall_node), False
+                return self.__call_print(fcall_node), ExecStatus.CONTINUE
             case "inputi" | "inputs":
-                return self.__call_input(fcall_node), False
+                return self.__call_input(fcall_node), ExecStatus.CONTINUE
             case _: # user-defined function
                 func_hash = (func_name, len(fcall_node.get("args")))
                 if func_hash not in self.function_table:
@@ -104,33 +102,34 @@ class Interpreter(InterpreterBase):
                 self.env = self.env.begin_scope()
                 result, ret = self.__run_statement_nodes(func_node.get("statements"))
                 self.env = self.env.end_scope()
-                
+
+                # restore previous environment
                 self.env = prev_env
                 
                 return result, ret
 
-    def __call_if(self, if_node: Element):
+    def __call_if(self, if_node: Element) -> tuple[Value, ExecStatus]:
         condition = self.__eval_expr(if_node.get("condition"))
         if condition.type() != Type.BOOL:
             super().error(ErrorType.TYPE_ERROR, "If condition must be a boolean")
         
-        # create child scope
+        # new child scope for if statement body
         self.env = EnvironmentManager(self.env)
         
-        result, ret = None, False
+        result, ret = Value(Type.NIL, None), ExecStatus.CONTINUE
         if condition.value():
             result, ret = self.__run_statement_nodes(if_node.get("statements"))
         elif if_node.get("else_statements"):
             result, ret = self.__run_statement_nodes(if_node.get("else_statements"))
-        
+
         self.env = self.env.end_scope()
 
         return result, ret
-        
-    def __call_for(self, for_node: Element) -> Value:
-        init = for_node.get("init")
-        condition = for_node.get("condition")
-        update = for_node.get("update")
+    
+    def __call_for(self, for_node: Element) -> tuple[Value, ExecStatus]:
+        init: Element = for_node.get("init")
+        condition: Element = for_node.get("condition")
+        update: Element = for_node.get("update") 
 
         if init.elem_type != Statement.ASSIGNMENT:
             super().error(ErrorType.TYPE_ERROR, "For loop initialization must be a variable declaration")
@@ -138,20 +137,19 @@ class Interpreter(InterpreterBase):
             super().error(ErrorType.TYPE_ERROR, "For loop update must be an assignment")
         
         self.__assign(init)
-        result = ret = None
+        result, ret = Value(Type.NIL, None), ExecStatus.CONTINUE
         
         while True:
             condition_result = self.__eval_expr(condition)
             if condition_result.type() != Type.BOOL:
-                    super().error(ErrorType.TYPE_ERROR, "For loop condition must be a boolean")
-            if condition_result.value() == False:
-                break
+                super().error(ErrorType.TYPE_ERROR, "For loop condition must be a boolean")
+            if condition_result.value() is False: break
             
-            # local scope for for loop
+            # new child scope for for loop body
             self.env = EnvironmentManager(self.env)
             result, ret = self.__run_statement_nodes(for_node.get("statements"))
             self.env = self.env.end_scope()
-            if ret: break
+            if ret == ExecStatus.RETURN: break
             
             self.__assign(update)
 
@@ -165,44 +163,48 @@ class Interpreter(InterpreterBase):
 
     def __eval_expr(self, expr_node: Element) -> Value:
         expr = expr_node.elem_type
-        if expr in [Type.INT, Type.STRING, Type.BOOL]:
+        if expr in {Type.INT, Type.STRING, Type.BOOL}:
             return Value(expr, expr_node.get("val"))
         if expr == Type.NIL:
             return Value(expr, None)
         if expr == Type.VARIABLE:
-            var_name = expr_node.get("name")
+            var_name: str = expr_node.get("name")
             val = self.env.get(var_name)
             if val is None:
                 super().error(ErrorType.NAME_ERROR, f"Variable {var_name} not found")
             return val
         if expr == Statement.FUNC_CALL:
             return self.__call_func(expr_node)[0]
-        if expr in Interpreter.UNA_OPS:
+        if expr in Operator.UNA_OPS:
             return self.__eval_unary_op(expr_node)
-        if expr in Interpreter.BIN_OPS:
+        if expr in Operator.BIN_OPS:
             return self.__eval_op(expr_node)
         
         super().error(ErrorType.TYPE_ERROR, f"Unknown operand type: {expr}")
 
-    def __eval_unary_op(self, expr_node: Element) -> Value:
+    def __eval_unary_op(self, expr_node: Element) -> Value: # neg, !
         op = self.__eval_expr(expr_node.get("op1"))
-        return OP_TO_LAMBDA[op.type()][expr_node.elem_type](op)
+        try:
+            return Operator.OP_TO_LAMBDA[op.type()][expr_node.elem_type](op)
+        except KeyError:
+            super().error(ErrorType.TYPE_ERROR, f"Incompatible operator {expr_node.elem_type} for type {op.type()}")
         
     def __eval_op(self, expr_node: Element) -> Value:
         oper = expr_node.elem_type
-        lhs, rhs = self.__eval_expr(expr_node.get("op1")), self.__eval_expr(expr_node.get("op2"))
+        lhs, rhs = self.__eval_expr(expr_node.get("op1")), self.__eval_expr(expr_node.get("op2")) 
 
         if lhs.type() != rhs.type():
+            # only equality check is allowed for different types
             if oper == "==":
                 return Value(Type.BOOL, lhs.type() == rhs.type())
             if oper == "!=":
                 return Value(Type.BOOL, lhs.type() != rhs.type())
             super().error(ErrorType.TYPE_ERROR, f"Incompatible types for {oper} operation")
-            
-        if oper not in OP_TO_LAMBDA[lhs.type()]:
+        
+        try:
+            return Operator.OP_TO_LAMBDA[lhs.type()][oper](lhs, rhs)
+        except KeyError:
             super().error(ErrorType.TYPE_ERROR, f"Incompatible operator {oper} for type {lhs.type()}")
-            
-        return OP_TO_LAMBDA[lhs.type()][oper](lhs, rhs)
 
     def __call_print(self, fcall_node) -> Value:
         args = fcall_node.get("args")
@@ -219,7 +221,7 @@ class Interpreter(InterpreterBase):
             prompt = get_printable(self.__eval_expr(args[0]))
             super().output(prompt)
             
-        input = super().get_input()
+        input: str = super().get_input()
         
         func_name = fcall_node.get("name")
         match func_name:

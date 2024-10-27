@@ -11,7 +11,7 @@ class EnvironmentManager:
         self.enclosing = enclosing # parent environment
 
     # Gets the data associated a variable name
-    def get(self, symbol: str) -> Value|None:
+    def get(self, symbol: str) -> Value | None:
         if symbol in self.environment:
             return self.environment[symbol]
         if self.enclosing:
@@ -42,11 +42,11 @@ class EnvironmentManager:
         return self.enclosing if self.enclosing else self
 
     def _print(self, env_name=None):
-        print(f"-----{env_name}-----")
+        print(f"{'=' * 4} {env_name or 'ENV':^10} {'=' * 4}")
         if self.enclosing:
-            print('!ENCLOSIMG!')
+            print(f"| 👉 {'Enclosing':<10}|")
             self.enclosing._print()
-        print('!LOCAL!')
+        print(f"| 👉 {'Local':<14} |")
         for key, item in self.environment.items():
-            print(f"{key}: {item.value()}")
-        print("----------------")
+            print(f"|  {key:<5}: {item.value():<10}|")
+        print(f"{'=' * 20}")

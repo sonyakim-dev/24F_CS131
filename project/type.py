@@ -1,3 +1,4 @@
+from enum import Enum, auto
 from intbase import InterpreterBase
 
 
@@ -21,7 +22,7 @@ class Value:
     def type(self):
         return self.t
     
-def create_value(val):
+def create_value(val) -> Value:
     if val == InterpreterBase.TRUE_DEF:
         return Value(Type.BOOL, True)
     elif val == InterpreterBase.FALSE_DEF:
@@ -33,7 +34,7 @@ def create_value(val):
     else:
         raise ValueError("Unknown value type")
 
-def get_printable(val):
+def get_printable(val) -> str:
     match val.type():
         case Type.INT:
             return str(val.value())
@@ -41,9 +42,8 @@ def get_printable(val):
             return val.value()
         case Type.BOOL:
             return "true" if val.value() else "false"
-        case _: #FIXME:
-            return "nil"
-            # raise ValueError("Not printable type")
+        case _:
+            raise ValueError("Not printable type")
 
 class Statement:
     VAR_DEF = "vardef"
@@ -52,3 +52,43 @@ class Statement:
     IF_STATEMENT = "if"
     FOR_STATEMENT = "for"
     RETURN = "return"
+
+class Operator:
+    UNA_OPS = {"neg", "!"}
+    BIN_OPS = {"+", "-", "*", "/", ">=", "<=", ">", "<", "||", "&&", "==", "!="}
+    
+    OP_TO_LAMBDA = {
+        Type.INT: {
+            "+": lambda x, y: Value(Type.INT, x.value() + y.value()),
+            "-": lambda x, y: Value(Type.INT, x.value() - y.value()),
+            "*": lambda x, y: Value(Type.INT, x.value() * y.value()),
+            "/": lambda x, y: Value(Type.INT, x.value() // y.value()),
+            "==": lambda x, y: Value(Type.BOOL, x.value() == y.value()),
+            "!=": lambda x, y: Value(Type.BOOL, x.value() != y.value()),
+            ">=": lambda x, y: Value(Type.BOOL, x.value() >= y.value()),
+            "<=": lambda x, y: Value(Type.BOOL, x.value() <= y.value()),
+            ">": lambda x, y: Value(Type.BOOL, x.value() > y.value()),
+            "<": lambda x, y: Value(Type.BOOL, x.value() < y.value()),
+            "neg": lambda x: Value(Type.INT, -x.value()),
+        },
+        Type.BOOL: {
+            "==": lambda x, y: Value(Type.BOOL, x.value() == y.value()),
+            "!=": lambda x, y: Value(Type.BOOL, x.value() != y.value()),
+            "||": lambda x, y: Value(Type.BOOL, x.value() or y.value()),
+            "&&": lambda x, y: Value(Type.BOOL, x.value() and y.value()),
+            "!": lambda x: Value(Type.BOOL, not x.value()),
+        },
+        Type.STRING: {
+            "+": lambda x, y: Value(Type.STRING, x.value() + y.value()),
+            "==": lambda x, y: Value(Type.BOOL, x.value() == y.value()),
+            "!=": lambda x, y: Value(Type.BOOL, x.value() != y.value()),
+        },
+        Type.NIL: {
+            "==": lambda x, y: Value(Type.BOOL, True),
+            "!=": lambda x, y: Value(Type.BOOL, False),
+        }
+    }
+
+class ExecStatus(Enum):
+    CONTINUE = auto()
+    RETURN = auto()
