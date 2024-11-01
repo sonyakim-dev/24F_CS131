@@ -29,7 +29,7 @@ class EnvironmentManager:
         return False
 
     # variable declaration
-    def create(self, symbol: str, val: None) -> bool:
+    def create(self, symbol: str, val=None) -> bool:
         if val is None: val = Value(Type.NIL, None)
         if symbol not in self.environment:
             self.environment[symbol] = val
