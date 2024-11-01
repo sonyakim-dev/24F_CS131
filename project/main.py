@@ -5,18 +5,17 @@ from type import *
 def main():
     program = """
 func main() {
- var a;
- a = factorial(5);
- print(a);
- foo();
+    var a;
+    a = foo(5);
+    print(0);
 }
-func factorial(n) {
-    if (n == 0) {
-        return 1;
-    }
-    return n * factorial(n - 1);
+func foo(n) {
+    print(1);
+    boo(2);
+    print(3);
 }
-func foo() {
+func boo(n) {
+    print(4);
     return;
 }
     """
