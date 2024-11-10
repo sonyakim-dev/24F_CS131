@@ -4,32 +4,28 @@ from type import *
 
 def main():
     program = """
-struct flea {
+struct person {
+  name: string;
   age: int;
-  infected : bool;
 }
 
-struct dog {
-  name: string;
-  vaccinated: bool;  
-  companion: flea;
+func foo(a:int, b: person) : void {
+  a = 10;
+  b.age = b.age + 1;  /* changes p.age from 18 to 19 */
+
+  b = new person;  /* this changes local b variable, not p var below */
+  b.age = 100;     /* this does NOT change the p.age field below */
 }
 
 func main() : void {
-  var d: dog;     
-  d = new dog;   /* sets d object reference to point to a dog structure */
-
-  print(d.vaccinated); /* prints false - default bool value */
-  print(d.companion); /* prints nil - default struct object reference */
-
-  /* we may now set d's fields */
-  d.name = "Koda";
-  d.vaccinated = true;
-  d.companion = new flea;
-  d.companion.age = 3; 
-  
-  var a: int;
-  a = 0;
+  var x: int;
+  x = 5;
+  var p:person;
+  p = new person;
+  p.age = 18;
+  foo(x, p);
+  print(x);      /* prints 5, since x is passed by value */
+  print(p.age);  /* prints 19, since p is passed by object reference */
 }
 """
     interpreter = Interpreter(trace_output=True)

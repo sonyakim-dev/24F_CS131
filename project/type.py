@@ -12,7 +12,7 @@ class Type:
     VOID = "void"
     STRUCT = "struct"
 
-PRIMITIVE_TYPES = { Type.INT, Type.STRING, Type.BOOL, Type.NIL }
+PRIMITIVE_TYPES = [ Type.INT, Type.STRING, Type.BOOL, Type.NIL ]
 
 # Represents a value, which has a type and its value
 class Value:

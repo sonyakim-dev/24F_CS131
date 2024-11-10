@@ -1,3 +1,4 @@
+from intbase import ErrorType
 from type import Type, Value
 
 
@@ -16,35 +17,46 @@ class EnvironmentManager:
         return None
 
     # Gets the data associated a variable name
-    def get(self, symbol: str) -> Value | None:
+    def get(self, symbol: str) -> Value | ErrorType:
         fields = symbol.split('.')
         scope = self._find_scope(fields[0])
-        if scope is None: return None
+        if scope is None: # variable not found
+            return ErrorType.NAME_ERROR
 
         curr_val = scope[fields[0]]
         # traverse nested fields
         for field in fields[1:]:
-            val_value = curr_val.value()
-            if not isinstance(val_value, dict) or field not in val_value:
-                return None
+            val_value: dict|Value = curr_val.value()
+
+            if val_value is None: # check for nil
+                return ErrorType.FAULT_ERROR
+            if not isinstance(val_value, dict): # check for struct
+                return ErrorType.TYPE_ERROR
+            if field not in val_value: # check for field
+                return ErrorType.NAME_ERROR
+            """ NOTE:
+            If the variable to the left of a dot is not a struct type, then you must generate an error of ErrorType.TYPE_ERROR.
+            If the variable to the left of a dot is nil, then you must generate an error of ErrorType.FAULT_ERROR.
+            If a field name is invalid (e.g., it's not a valid field in a struct definition), then you must generate an error of ErrorType.NAME_ERROR.
+            """
             curr_val = val_value[field]
         return curr_val
 
     # Assign a value to a variable name
-    def assign(self, symbol: str, value: Value) -> bool:
+    def assign(self, symbol: str, value: Value) -> ErrorType|None:
         curr_val = self.get(symbol)
-        if curr_val is None: return False
+        if isinstance(curr_val, ErrorType): return curr_val
 
         if isinstance(curr_val.value(), dict): # if it is a struct
             final_field = symbol.split('.')[-1]
             final_value = curr_val.value()
             if final_field not in final_value:
-                return False
+                return ErrorType.NAME_ERROR
             final_value[final_field] = value
         else: # if it is a variable
             curr_val.v = value.v
 
-        return True
+        return None
 
     # Variable declaration
     def create(self, symbol: str, val: Value=None) -> bool:

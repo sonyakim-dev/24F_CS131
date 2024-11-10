@@ -100,7 +100,7 @@ class Interpreter(InterpreterBase):
         var_type = vardef_node.get("var_type")
         var_value = get_default_value(var_type)
 
-        if var_value not in PRIMITIVE_TYPES:
+        if var_type not in PRIMITIVE_TYPES:
             if var_type not in self.struct_table:
                 super().error(ErrorType.TYPE_ERROR, f"Invalid type {vardef_node.get('var_type')} for variable {var_name}")
             var_value = Value(var_type, None)
@@ -113,12 +113,16 @@ class Interpreter(InterpreterBase):
         var_value = self.__eval_expr(assign_node.get("expression"))
         var_def = self.env.get(var_name)
 
-        if var_def is None:
-            super().error(ErrorType.NAME_ERROR, f"Variable {var_name} not defined")
+        if isinstance(var_def, ErrorType):
+            super().error(var_def, f"Variable {var_name} not found")
+
         if var_def.type() != var_value.type():
             super().error(ErrorType.TYPE_ERROR, f"Cannot assign {var_value.type()} to variable {var_name}")
 
-        self.env.assign(var_name, var_value)
+        res = self.env.assign(var_name, var_value)
+
+        if isinstance(res, ErrorType):
+            super().error(res, f"Cannot assign {var_value.type()} to variable {var_name}")
 
     def __call_func(self, fcall_node: Element) -> Value:
         func_name = fcall_node.get("name")
@@ -212,8 +216,8 @@ class Interpreter(InterpreterBase):
         if expr == Type.VARIABLE: # can be struct type
             var_name = expr_node.get("name")
             val = self.env.get(var_name)
-            if val is None:
-                super().error(ErrorType.NAME_ERROR, f"Variable '{var_name}' not found")
+            if isinstance(val, ErrorType):
+                super().error(val, f"Variable '{var_name}' not found")
             return val
         if expr in Operator.UNA_OPS:
             return self.__eval_unary_op(expr_node)
@@ -255,13 +259,14 @@ class Interpreter(InterpreterBase):
         except KeyError:
             super().error(ErrorType.TYPE_ERROR, f"Incompatible operator {oper} for type {lhs.type()}")
 
-    def __call_print(self, fcall_node) -> Value:
+    def __call_print(self, fcall_node: Element) -> Value:
         args = fcall_node.get("args")
         # s = reduce(lambda acc, arg: acc + get_printable(self.__eval_expr(arg)), args, "")
         # TODO: can this be better?
         s = ""
         for arg in args:
             val = self.__eval_expr(arg)
+            # print("@", val)
             if val.type() in self.struct_table and val.value() is None:
                 s += "nil"
             else:
@@ -269,7 +274,7 @@ class Interpreter(InterpreterBase):
         super().output(s)
         return Value(Type.NIL, None)
 
-    def __call_input(self, fcall_node) -> Value:
+    def __call_input(self, fcall_node: Element) -> Value:
         args = fcall_node.get("args")
         if len(args) > 1:
             super().error(ErrorType.NAME_ERROR, "inputi() function that takes > 1 parameter")
