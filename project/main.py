@@ -27,6 +27,9 @@ func main() : void {
   d.vaccinated = true;
   d.companion = new flea;
   d.companion.age = 3; 
+  
+  var a: int;
+  a = 0;
 }
 """
     interpreter = Interpreter(trace_output=True)

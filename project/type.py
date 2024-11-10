@@ -39,17 +39,6 @@ def create_value(val) -> Value:
         raise ValueError("Unknown value type")
 
 def get_printable(val) -> str:
-    # type = val.type()
-    # if type == Type.INT:
-    #     return str(val.value())
-    # if type == Type.STRING:
-    #     return val.value()
-    # if type == Type.BOOL:
-    #     return "true" if val.value() else "false"
-    # if type == Type.NIL:
-    #     return "nil"
-    # if type == Type.STRUCT:
-    #     return val.name()
     match val.type():
         case Type.INT:
             return str(val.value())

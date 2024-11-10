@@ -17,18 +17,12 @@ class EnvironmentManager:
 
     # Gets the data associated a variable name
     def get(self, symbol: str) -> Value | None:
-        curr_env = self.environment[-1]
         fields = symbol.split('.')
-        curr_val = self._find_scope(fields[0])
+        scope = self._find_scope(fields[0])
+        if scope is None: return None
 
-        if curr_val is None: return None
-        # find the scope where the variable is declared
-        for env in reversed(curr_env):
-            if fields[0] in env:
-                curr_val = env[fields[0]]
-                break
-        if curr_val is None: return None
-
+        curr_val = scope[fields[0]]
+        # traverse nested fields
         for field in fields[1:]:
             val_value = curr_val.value()
             if not isinstance(val_value, dict) or field not in val_value:
@@ -36,40 +30,23 @@ class EnvironmentManager:
             curr_val = val_value[field]
         return curr_val
 
-    # assign a value to a variable name
+    # Assign a value to a variable name
     def assign(self, symbol: str, value: Value) -> bool:
-        curr_env = self.environment[-1]
-        fields = symbol.split('.')
-        base_field = fields[0]
-        curr_val = None
-
-        # find the scope where the base variable is declared
-        for env in reversed(curr_env):
-            if base_field in env:
-                curr_val = env[base_field]
-                break
+        curr_val = self.get(symbol)
         if curr_val is None: return False
 
-        # traverse nested fields up to the second-to-last field
-        for field in fields[1:-1]:
-            val_value = curr_val.value()
-            if not isinstance(val_value, dict) or field not in val_value:
-                return False
-            curr_val = val_value[field]
-
-        # assign value
-        if isinstance(curr_val.value(), dict):
-            final_field = fields[-1]
+        if isinstance(curr_val.value(), dict): # if it is a struct
+            final_field = symbol.split('.')[-1]
             final_value = curr_val.value()
             if final_field not in final_value:
                 return False
             final_value[final_field] = value
-        else:
+        else: # if it is a variable
             curr_val.v = value.v
 
         return True
 
-    # variable declaration
+    # Variable declaration
     def create(self, symbol: str, val: Value=None) -> bool:
         if val is None: val = Value(Type.NIL, None) # default value
         curr_env = self.environment[-1][-1]
@@ -106,5 +83,5 @@ class EnvironmentManager:
                 self._print_value(sub_key, sub_item, indent + 2)
         elif isinstance(item, Value):
             print(f"|{' ' * indent}  {key:<6}: {item.type()} {str(item.value()):<{10 - indent}}|")
-        else:
-            print(f"|{' ' * indent}  {key:<6}: {str(item):<{10 - indent}}|")
+        # else:
+        #     print(f"|{' ' * indent}  {key:<6}: {str(item):<{10 - indent}}|")

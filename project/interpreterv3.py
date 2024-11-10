@@ -40,7 +40,7 @@ class Interpreter(InterpreterBase):
                     super().error(ErrorType.TYPE_ERROR, f"Function {func_name} has invalid parameter type")
 
             self.func_table[(func_name, len(func_node.get("args")))] = func_node
-        """NOTE:
+        """ NOTE:
         Use of an invalid/undefined/missing type for a parameter or return type must result in an error of ErrorType.TYPE_ERROR.
         This check should happen before the execution of the main function, 
         """
@@ -112,6 +112,7 @@ class Interpreter(InterpreterBase):
         var_name = assign_node.get("name")
         var_value = self.__eval_expr(assign_node.get("expression"))
         var_def = self.env.get(var_name)
+
         if var_def is None:
             super().error(ErrorType.NAME_ERROR, f"Variable {var_name} not defined")
         if var_def.type() != var_value.type():
@@ -231,8 +232,6 @@ class Interpreter(InterpreterBase):
             super().error(ErrorType.NAME_ERROR, f"Struct {struct_name} not found")
 
         struct_fields = self.struct_table[struct_name]
-        # for field, val in struct_fields.items():
-        #     print(field, val.type(), val.value())
         return { field: get_default_value(type) if type in PRIMITIVE_TYPES else Value(type, None)
                  for field, type in struct_fields.items() }
 
@@ -259,6 +258,7 @@ class Interpreter(InterpreterBase):
     def __call_print(self, fcall_node) -> Value:
         args = fcall_node.get("args")
         # s = reduce(lambda acc, arg: acc + get_printable(self.__eval_expr(arg)), args, "")
+        # TODO: can this be better?
         s = ""
         for arg in args:
             val = self.__eval_expr(arg)
