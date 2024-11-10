@@ -31,29 +31,3 @@
 
 
 # divis = lambda n, m: [i for i in range(n, m+1) if i % 5 == 0 or i % 7 == 0 or i % 9 == 0]
-
-class Pet:
-    def __init__(self):
-        print("Pet")
-        self.var = 1
-    def play(self):
-        self.do_playful_thing()
-    def do_playful_thing(self):
-        print("Pet play")
-    def print_var(self):
-        print(self.var)
-		
-class Dog(Pet):
-    def __init__(self):
-        self.var = 2
-        super().__init__()
-        print("Dog")
-    def do_playful_thing(self):
-        print("Dog play")
-    def bark(self):
-        super().do_playful_thing()
-  
-x = Dog()
-x.play()
-x.print_var()
-x.bark()

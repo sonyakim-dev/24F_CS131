@@ -1,3 +1,4 @@
+import copy
 from functools import reduce
 
 
@@ -29,8 +30,27 @@ def squares_dict(lower_bound, upper_bound):
     return {i: i**2 for i in range(lower_bound, upper_bound+1)}
 
 
-print(strip_characters("Hello, world!", {"o", "h", "l"}))
-print(convert_to_decimal([1, 0, 1]))
-print(parse_csv(["apple,8", "pear,24", "gooseberry,-2"]))
-print(unique_characters("happy"))
-print(squares_dict(1, 5))
+# print(strip_characters("Hello, world!", {"o", "h", "l"}))
+# print(convert_to_decimal([1, 0, 1]))
+# print(parse_csv(["apple,8", "pear,24", "gooseberry,-2"]))
+# print(unique_characters("happy"))
+# print(squares_dict(1, 5))
+
+
+class A:
+    def __init__(self, a):
+        self.a = a
+    
+class B(A):
+    def __init__(self, b):
+        self.b = b
+
+# print(isinstance(B(1), A))
+# print(issubclass(A, A))
+# print(type(A(1)) is type(B(2)))
+
+ls1 = [1, 2, 3]
+# ls2 = ls1
+ls1[len(ls1):] = [4]
+print(ls1)
+# print(ls2)

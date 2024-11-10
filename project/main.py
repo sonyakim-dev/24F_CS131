@@ -1,25 +1,34 @@
-from interpreterv2 import Interpreter
+from interpreterv3 import Interpreter
 from type import *
 
 
 def main():
     program = """
-func main() {
-    var a;
-    a = foo(5);
-    print(0);
+struct flea {
+  age: int;
+  infected : bool;
 }
-func foo(n) {
-    print(1);
-    boo(2);
-    print(3);
-}
-func boo(n) {
-    print(4);
-    return;
-}
-    """
 
+struct dog {
+  name: string;
+  vaccinated: bool;  
+  companion: flea;
+}
+
+func main() : void {
+  var d: dog;     
+  d = new dog;   /* sets d object reference to point to a dog structure */
+
+  print(d.vaccinated); /* prints false - default bool value */
+  print(d.companion); /* prints nil - default struct object reference */
+
+  /* we may now set d's fields */
+  d.name = "Koda";
+  d.vaccinated = true;
+  d.companion = new flea;
+  d.companion.age = 3; 
+}
+"""
     interpreter = Interpreter(trace_output=True)
     interpreter.run(program)
 

@@ -49,6 +49,5 @@ sumSquares n = sumSquares_helper n 0
 main :: IO ()
 main = do
   -- print(longest_run [True, True, False, True, True, True, False])
-  -- print(max_tree_value (Node 3 [(Node 2 [Node 7 []]), (Node 5 [Node 4 []])]))
+  print(max_tree_value (Node 3 [(Node 2 [Node 0 [], Node 7 []]), (Node 5 [Node 4 []])]))
   -- print(super_giuseppe [Heal 40, Fight 70, Travel 100, Fight 60, Heal 40])
-  print(sumSquares 3)

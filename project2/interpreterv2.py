@@ -122,7 +122,7 @@ class Interpreter(InterpreterBase):
         elif if_node.get("else_statements"):
             result, ret = self.__run_statements(if_node.get("else_statements"))
 
-        self.env = self.env.end_scope()
+        self.env = self.env.pop_block()
 
         return result, ret
     
@@ -146,9 +146,9 @@ class Interpreter(InterpreterBase):
             if condition_result.value() is False: break
             
             # new child scope for for loop body
-            self.env = self.env.begin_scope()
+            self.env = self.env.push_block()
             result, ret = self.__run_statements(for_node.get("statements"))
-            self.env = self.env.end_scope()
+            self.env = self.env.pop_block()
             if ret == ExecStatus.RETURN: break
             
             self.__assign(update)
