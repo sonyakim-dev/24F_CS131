@@ -1,3 +1,4 @@
+from dataclasses import fields
 from functools import reduce
 
 from brewparse import parse_program
@@ -114,8 +115,8 @@ class Interpreter(InterpreterBase):
         if var_def is None:
             super().error(ErrorType.NAME_ERROR, f"Variable {var_name} not defined")
         if var_def.type() != var_value.type():
-            print(var_def.type(), var_value.type()) # nil, struct
             super().error(ErrorType.TYPE_ERROR, f"Cannot assign {var_value.type()} to variable {var_name}")
+
         self.env.assign(var_name, var_value)
 
     def __call_func(self, fcall_node: Element) -> Value:
@@ -209,14 +210,9 @@ class Interpreter(InterpreterBase):
             return Value(expr, None)
         if expr == Type.VARIABLE: # can be struct type
             var_name = expr_node.get("name")
-            fields = var_name.split(".")
-            val = self.env.get(fields[0])
+            val = self.env.get(var_name)
             if val is None:
                 super().error(ErrorType.NAME_ERROR, f"Variable '{var_name}' not found")
-            for field in fields[1:]:
-                if field not in val.value():
-                    super().error(ErrorType.NAME_ERROR, f"Field '{field}' not found in '{var_name}'")
-                val = val.value().get(field)
             return val
         if expr in Operator.UNA_OPS:
             return self.__eval_unary_op(expr_node)

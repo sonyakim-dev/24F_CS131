@@ -16,19 +16,15 @@ PRIMITIVE_TYPES = { Type.INT, Type.STRING, Type.BOOL, Type.NIL }
 
 # Represents a value, which has a type and its value
 class Value:
-    def __init__(self, type, value, struct_name=None):
+    def __init__(self, type, value):
         self.t = type
         self.v = value
-        self.n = struct_name
 
     def value(self):
         return self.v
 
     def type(self):
         return self.t
-
-    def name(self):
-        return self.n if self.t == Type.STRUCT else None
     
 def create_value(val) -> Value:
     if val == InterpreterBase.TRUE_DEF:
@@ -64,7 +60,7 @@ def get_printable(val) -> str:
         case _:
             raise ValueError("Not printable type")
 
-def get_default_value(t: str, struct_name: str=None) -> Value|None:
+def get_default_value(t: str) -> Value|None:
     match t:
         case Type.INT:
             return Value(Type.INT, 0)
@@ -76,8 +72,8 @@ def get_default_value(t: str, struct_name: str=None) -> Value|None:
             return Value(Type.NIL, None)
         case Type.VOID:
             return Value(Type.NIL, None)
-        case Type.STRUCT:
-            return Value(Type.STRUCT, None, struct_name)
+        # case Type.STRUCT:
+        #     return Value(Type.STRUCT, None)
         case _:
             return None
 
