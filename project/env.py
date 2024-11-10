@@ -20,7 +20,8 @@ class EnvironmentManager:
     def get(self, symbol: str) -> Value | ErrorType:
         fields = symbol.split('.')
         scope = self._find_scope(fields[0])
-        if scope is None: # variable not found
+
+        if scope is None: # base variable not in scope
             return ErrorType.NAME_ERROR
 
         curr_val = scope[fields[0]]
@@ -40,21 +41,34 @@ class EnvironmentManager:
             If a field name is invalid (e.g., it's not a valid field in a struct definition), then you must generate an error of ErrorType.NAME_ERROR.
             """
             curr_val = val_value[field]
+
         return curr_val
 
     # Assign a value to a variable name
     def assign(self, symbol: str, value: Value) -> ErrorType|None:
-        curr_val = self.get(symbol)
-        if isinstance(curr_val, ErrorType): return curr_val
+        fields = symbol.split('.')
+        scope = self._find_scope(fields[0])
 
-        if isinstance(curr_val.value(), dict): # if it is a struct
-            final_field = symbol.split('.')[-1]
-            final_value = curr_val.value()
-            if final_field not in final_value:
+        if scope is None: # base variable not in scope
+            return ErrorType.NAME_ERROR
+
+        # traverse nested fields up to the second-to-last field
+        for i in range(len(fields) - 1):
+            field = fields[i]
+            if field not in scope:  # field existence check
                 return ErrorType.NAME_ERROR
-            final_value[final_field] = value
-        else: # if it is a variable
-            curr_val.v = value.v
+
+            scope = scope.get(field)
+            if scope is None:  # nil check
+                return ErrorType.FAULT_ERROR
+
+            scope = scope.value() # step into the next scope
+            if not isinstance(scope, dict): # struct type check
+                return ErrorType.TYPE_ERROR
+
+        # assign the value to the final field
+        final_field = fields[-1]
+        scope[final_field] = value
 
         return None
 
@@ -95,5 +109,3 @@ class EnvironmentManager:
                 self._print_value(sub_key, sub_item, indent + 2)
         elif isinstance(item, Value):
             print(f"|{' ' * indent}  {key:<6}: {item.type()} {str(item.value()):<{10 - indent}}|")
-        # else:
-        #     print(f"|{' ' * indent}  {key:<6}: {str(item):<{10 - indent}}|")

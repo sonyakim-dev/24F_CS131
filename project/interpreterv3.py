@@ -262,11 +262,10 @@ class Interpreter(InterpreterBase):
     def __call_print(self, fcall_node: Element) -> Value:
         args = fcall_node.get("args")
         # s = reduce(lambda acc, arg: acc + get_printable(self.__eval_expr(arg)), args, "")
-        # TODO: can this be better?
         s = ""
         for arg in args:
             val = self.__eval_expr(arg)
-            # print("@", val)
+            # TODO: can this be better?
             if val.type() in self.struct_table and val.value() is None:
                 s += "nil"
             else:
