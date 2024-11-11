@@ -13,26 +13,30 @@ class BasicType(Enum):
 
     @classmethod
     def contains(cls, other):
+        """ Check if the type is BasicType """
         return any(other == item.value for item in cls)
 
-    def __str__(self): # debug print
+    def __str__(self):  # debug print
         return self.value
 
 class StructType:
+    STRUCT = "struct"
     def __init__(self, name):
         self.name = name
-    def __eq__(self, other): # struct comparison
+
+    def __eq__(self, other):  # struct comparison
         if isinstance(other, StructType):
             return self.name == other.name
         return False
-    def __hash__(self):
-        return hash("struct")
-    def __str__(self): # debug print
+
+    def __str__(self):  # debug print
         return self.name
 
+
 Type = Union[BasicType, StructType]
-DeclareType = {BasicType.INT.value, BasicType.BOOL.value, BasicType.STRING.value}
+VarType = {BasicType.INT.value, BasicType.BOOL.value, BasicType.STRING.value}
 FuncType = {BasicType.INT.value, BasicType.BOOL.value, BasicType.STRING.value, BasicType.VOID.value}
+
 
 # Represents a value, which has a type and its value
 class Value:
@@ -46,21 +50,30 @@ class Value:
     def type(self):
         return self.t
 
+
 COERCION = {
     BasicType.INT: {
         BasicType.BOOL: lambda x: Value(BasicType.BOOL, x.value() != 0),
     },
 }
 
-def try_conversion(from_: Value, to_: Type) -> Value|None:
-    if from_.type() == to_:
-        return from_
-    if isinstance(to_, StructType) and from_.type() == BasicType.NIL:
-        return Value(to_, None)
-    if from_.type() in COERCION and to_ in COERCION[from_.type()]:
-        return COERCION[from_.type()][to_](from_)
+
+def try_conversion(v: Value, t: Type) -> Value | None:
+    if v.type() == t:
+        return v
+    # if isinstance(t, StructType):
+    #     return normalize_struct(v)
+    if isinstance(t, StructType) and v.type() == BasicType.NIL:
+        return Value(t, None)
+    if v.type() in COERCION and t in COERCION[v.type()]:
+        return COERCION[v.type()][t](v)
     return None
-    
+
+def normalize_struct(val: Value):
+    """ If a struct is not initialized (contains None Value), then treat it as Nil Value """
+    return Value(BasicType.NIL, None) \
+        if isinstance(val.type(), StructType) and val.value() is None else val
+
 def create_value(val) -> Value:
     if val == InterpreterBase.TRUE_DEF:
         return Value(BasicType.BOOL, True)
@@ -73,7 +86,7 @@ def create_value(val) -> Value:
     else:
         raise ValueError("Unknown value type")
 
-def get_default_value(t: Type) -> Value|None:
+def get_default_value(t: Type) -> Value | None:
     match t:
         case BasicType.INT:
             return Value(BasicType.INT, 0)
@@ -90,7 +103,7 @@ def get_default_value(t: Type) -> Value|None:
                 return Value(t, None)
             return None
 
-def get_printable(val) -> str:
+def get_printable(val: Value) -> str:
     t = val.type()
     if t == BasicType.INT:
         return str(val.value())
@@ -102,6 +115,7 @@ def get_printable(val) -> str:
         return "nil"
     raise ValueError(f"Not printable type {t}")
 
+
 class Statement:
     VAR_DEF = "vardef"
     ASSIGNMENT = "="
@@ -111,10 +125,12 @@ class Statement:
     RETURN = "return"
     NEW = "new"
 
+
 class Operator:
     UNA_OPS = {"neg", "!"}
+    EQ_OPS = {"==", "!="}
     BIN_OPS = {"+", "-", "*", "/", ">=", "<=", ">", "<", "||", "&&", "==", "!="}
-    
+
     OP_TO_LAMBDA = {
         BasicType.INT: {
             "+": lambda x, y: Value(BasicType.INT, x.value() + y.value()),
@@ -145,6 +161,12 @@ class Operator:
             "==": lambda x, y: Value(BasicType.BOOL, x.type() == y.type() and x.value() == y.value()),
             "!=": lambda x, y: Value(BasicType.BOOL, x.type() != y.type() or x.value() != y.value()),
         },
+        StructType.STRUCT: {
+            "==": lambda x, y: Value(BasicType.BOOL,
+                id(x.value()) == id(y.value()) if isinstance(y.type(), StructType) else x.value() == y.value()),
+            "!=": lambda x, y: Value(BasicType.BOOL,
+                id(x.value()) != id(y.value()) if isinstance(y.type(), StructType) else x.value() != y.value()),
+        }
     }
 
 class ExecStatus(Enum):

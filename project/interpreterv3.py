@@ -1,3 +1,5 @@
+from functools import reduce
+
 from brewparse import parse_program
 from element import Element
 from env import EnvironmentManager
@@ -32,7 +34,7 @@ class Interpreter(InterpreterBase):
                 super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' has invalid return type '{return_type}'")
             for param in params: # check param types
                 param_type = param.get("var_type")
-                if param_type not in DeclareType and param_type not in self.struct_table:
+                if param_type not in VarType and param_type not in self.struct_table:
                     super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' has invalid parameter type '{param_type}")
 
             self.func_table[(func_name, len(func_node.get("args")))] = func_node
@@ -234,7 +236,7 @@ class Interpreter(InterpreterBase):
 
     def __eval_expr(self, expr_node: Element) -> Value:
         expr = expr_node.elem_type
-        if expr in DeclareType:
+        if expr in VarType:
             return Value(BasicType(expr), expr_node.get("val"))
         if expr == BasicType.NIL.value:
             return Value(BasicType(expr), None)
@@ -276,41 +278,27 @@ class Interpreter(InterpreterBase):
     def __eval_op(self, expr_node: Element) -> Value:
         oper = expr_node.elem_type
         lhs, rhs = self.__eval_expr(expr_node.get("op1")), self.__eval_expr(expr_node.get("op2"))
+        lhs, rhs = normalize_struct(lhs), normalize_struct(rhs) # normalize None value structs to NIL value
 
         # handle equality operators for struct types
-        if oper in ["==", "!="]:
-            # normalize None value structs to NIL type
-            if isinstance(lhs.type(), StructType) and lhs.value() is None:
-                lhs = Value(BasicType.NIL, None)
-            if isinstance(rhs.type(), StructType) and rhs.value() is None:
-                rhs = Value(BasicType.NIL, None)
-
-            if isinstance(lhs.type(), StructType) and isinstance(rhs.type(), StructType):
-                res = id(lhs.value()) == id(rhs.value())
-                return Value(BasicType.BOOL, res if oper == "==" else not res)
-            elif isinstance(lhs.type(), StructType) or isinstance(rhs.type(), StructType):
-                res = lhs.value() == rhs.value()
-                return Value(BasicType.BOOL, res if oper == "==" else not res)
+        if oper in Operator.EQ_OPS:
+            if isinstance(lhs.type(), StructType):
+                return Operator.OP_TO_LAMBDA[StructType.STRUCT][oper](lhs, rhs)
+            elif isinstance(rhs.type(), StructType):
+                return Operator.OP_TO_LAMBDA[StructType.STRUCT][oper](rhs, lhs)
 
         # for base type, types must match except for equality operators
-        if lhs.type() != rhs.type() and oper not in ["==", "!="]:
+        if lhs.type() != rhs.type() and oper not in Operator.EQ_OPS:
             super().error(ErrorType.TYPE_ERROR, f"Incompatible types for {oper} operation")
 
-        try: # basic types
-            return Operator.OP_TO_LAMBDA[lhs.type()][oper](lhs, rhs)
-        except KeyError:
+        op_func = Operator.OP_TO_LAMBDA.get(lhs.type(), {}).get(oper)
+        if not op_func:
             super().error(ErrorType.TYPE_ERROR, f"Incompatible operator {oper} for type {lhs.type()}")
+        return op_func(lhs, rhs)
 
     def __call_print(self, fcall_node: Element) -> Value:
         args = fcall_node.get("args")
-        s = ""
-        for arg in args:
-            val = self.__eval_expr(arg)
-            if isinstance(val.type(), StructType) and val.value() is None:
-                s += "nil"
-            else:
-                s += get_printable(val)
-
+        s = reduce(lambda acc, arg: acc + get_printable(self.__eval_expr(arg)), args, "")
         super().output(s)
         return Value(BasicType.NIL, None)
 
@@ -325,6 +313,7 @@ class Interpreter(InterpreterBase):
 
         usr_input = super().get_input()
         func_name = fcall_node.get("name")
+
         match func_name:
             case "inputi":
                 return Value(BasicType.INT, int(usr_input))
