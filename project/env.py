@@ -33,6 +33,8 @@ class EnvironmentManager:
                 return None, '', ErrorType.FAULT_ERROR
 
             scope = scope.value() # step into the next scope
+            if scope is None: # nil check
+                return None, '', ErrorType.FAULT_ERROR
             if not isinstance(scope, dict): # struct type check
                 return None, '', ErrorType.TYPE_ERROR
 
@@ -89,4 +91,4 @@ class EnvironmentManager:
             for sub_key, sub_item in item.value().items():
                 self._print_value(sub_key, sub_item, indent + 2)
         elif isinstance(item, Value):
-            print(f"|{' ' * indent}  {key:<6}: {item.type()} {str(item.value()):<{10 - indent}}|")
+            print(f"|{' ' * indent}  {key:<6}: {item.type()} {str(item.value()):<{max(0, 10-indent)}}|")

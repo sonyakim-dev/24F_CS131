@@ -4,6 +4,7 @@ from env import EnvironmentManager
 from intbase import ErrorType
 from type import *
 
+
 class Interpreter(InterpreterBase):
     def __init__(self, console_output=True, inp=None, trace_output=False):
         super().__init__(console_output, inp)
@@ -42,6 +43,8 @@ class Interpreter(InterpreterBase):
             if struct_name in self.struct_table:
                 super().error(ErrorType.NAME_ERROR, f"Struct '{struct_name}' defined more than once")
 
+            self.struct_table[struct_name] = {} # in case a field type references itself
+
             fields = {}
             for field_node in struct_node.get("fields"):
                 field_name = field_node.get("name")
@@ -55,7 +58,7 @@ class Interpreter(InterpreterBase):
             self.struct_table[struct_name] = fields
 
     def __get_type(self, var_type: str) -> Type|ErrorType:
-        if var_type in DeclareType:
+        if var_type in BasicType:
             return BasicType(var_type)
         elif var_type in self.struct_table:
             return StructType(var_type)
@@ -117,13 +120,16 @@ class Interpreter(InterpreterBase):
         if isinstance(var_def, ErrorType):
             super().error(var_def, f"Variable '{var_name}' not found")
 
-        if var_def.type() != value.type():
-            super().error(ErrorType.TYPE_ERROR, f"Cannot assign '{value.type()}' to variable '{var_name}'")
+        var_type, value_type = var_def.type(), value.type()
+        if var_type != value_type:
+            result = try_conversion(value, var_type)
+            if result is None:
+                super().error(ErrorType.TYPE_ERROR, f"Cannot assign '{value_type}' to variable '{var_name}'")
 
         res = self.env.assign(var_name, value)
 
         if isinstance(res, ErrorType):
-            super().error(res, f"Cannot assign '{value.type()}' to variable '{var_name}'")
+            super().error(res, f"Cannot assign '{value_type}' to variable '{var_name}'")
 
     def __call_func(self, fcall_node: Element) -> Value:
         func_name = fcall_node.get("name")
@@ -138,13 +144,17 @@ class Interpreter(InterpreterBase):
                     super().error(ErrorType.NAME_ERROR, f"Function '{func_name}' not found")
                 
                 func_node = self.func_table[func_hash]
-                param_names = [arg_node.get("name") for arg_node in func_node.get("args")]
+                params = dict([(arg_node.get("name"), self.__get_type(arg_node.get("var_type"))) for arg_node in func_node.get("args")])
                 arg_values = [self.__eval_expr(arg) for arg in fcall_node.get("args")]
 
                 self.env.push_env() # new environment for function call
                 
                 # map arguments to parameters and add to environment
-                for param_name, arg_value in zip(param_names, arg_values):
+                for (param_name,param_value), arg_value in zip(params.items(), arg_values):
+                    if param_value != arg_value.type():
+                        arg_value = try_conversion(arg_value, param_value)
+                        if arg_value is None:
+                            super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' expects '{param_value}' for '{param_name}'")
                     self.env.create(param_name, arg_value)
 
                 if self.trace_output: self.env._print(func_name) # debug
@@ -158,6 +168,8 @@ class Interpreter(InterpreterBase):
                 # no need to check invalid return type since it's already checked in __set_function_table
 
                 if return_type != result.type():
+                    if return_type == BasicType.VOID and result.type() == BasicType.NIL:
+                        return Value(BasicType.VOID, None)
                     result = try_conversion(result, return_type)
                     if result is None:
                         super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' must return '{return_type}'")
@@ -167,7 +179,9 @@ class Interpreter(InterpreterBase):
     def __call_if(self, if_node: Element) -> tuple[Value, ExecStatus]:
         condition = self.__eval_expr(if_node.get("condition"))
         if condition.type() != BasicType.BOOL:
-            super().error(ErrorType.TYPE_ERROR, "If condition must be a boolean")
+            condition = try_conversion(condition, BasicType.BOOL)
+            if condition is None:
+                super().error(ErrorType.TYPE_ERROR, "If condition must be a boolean")
 
         self.env.push_block() # new child scope for if statement body
         
@@ -196,8 +210,10 @@ class Interpreter(InterpreterBase):
         
         while True:
             condition_result = self.__eval_expr(condition)
-            if condition_result.type() != BasicType.BOOL:
-                super().error(ErrorType.TYPE_ERROR, "For loop condition must be a boolean")
+            if condition_result.type() != BasicType.BOOL.value:
+                condition_result = try_conversion(condition_result, BasicType.BOOL)
+                if condition_result is None:
+                    super().error(ErrorType.TYPE_ERROR, "For loop condition must be a boolean")
             if condition_result.value() is False: break
 
             self.env.push_block() # new child scope for for loop body
@@ -224,10 +240,8 @@ class Interpreter(InterpreterBase):
         if expr == "var": # can be struct type
             var_name = expr_node.get("name")
             val = self.env.get(var_name)
-
             if isinstance(val, ErrorType):
                 super().error(val, f"Variable '{var_name}' not found")
-
             return val
         if expr in Operator.UNA_OPS:
             return self.__eval_unary_op(expr_node)
@@ -267,7 +281,8 @@ class Interpreter(InterpreterBase):
             super().error(ErrorType.TYPE_ERROR, f"Incompatible types for {oper} operation")
 
         # struct comparison
-        if oper in ["==", "!="] and isinstance(lhs.type(), StructType) and isinstance(rhs.type(), StructType):
+        # TODO: struct == nil
+        if oper in ["==", "!="] and (isinstance(lhs.type(), StructType) or isinstance(rhs.type(), StructType)):
             if lhs.value() is None or rhs.value() is None:
                 return Value(BasicType.BOOL, lhs.value() == rhs.value())
             return Value(BasicType.BOOL, id(lhs.value()) == id(rhs.value()))

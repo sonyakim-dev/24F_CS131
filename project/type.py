@@ -45,10 +45,6 @@ COERCION = {
     BasicType.INT: {
         BasicType.BOOL: lambda x: Value(BasicType.BOOL, x.value() != 0),
     },
-    BasicType.NIL: {
-        BasicType.INT: lambda x: get_default_value(BasicType.INT),
-        BasicType.BOOL: lambda x: get_default_value(BasicType.BOOL),
-    }
 }
 
 def try_conversion(from_: Value, to_: Type) -> Value|None:
@@ -80,8 +76,10 @@ def get_default_value(t: Type) -> Value|None:
             return Value(BasicType.STRING, "")
         case BasicType.BOOL:
             return Value(BasicType.BOOL, False)
-        case BasicType.NIL | BasicType.VOID:
+        case BasicType.NIL:
             return Value(BasicType.NIL, None)
+        case BasicType.VOID:
+            return Value(BasicType.VOID, None)
         case _:
             if isinstance(t, StructType):
                 return Value(t, None)
