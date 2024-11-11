@@ -1,18 +1,29 @@
 from enum import Enum, auto
+from typing import Union
+
 from intbase import InterpreterBase
 
-
-# Enumerated type for our different language data types
-class Type:
+class BasicType:
     INT = "int"
     BOOL = "bool"
     STRING = "string"
     NIL = "nil"
-    VARIABLE = "var"
     VOID = "void"
-    STRUCT = "struct"
 
-PRIMITIVE_TYPES = [ Type.INT, Type.STRING, Type.BOOL, Type.NIL ]
+class StructType:
+    name: str
+    def __eq__(self, other): # struct comparison
+        if isinstance(other, StructType):
+            return self.name == other.name
+        return False
+
+Type = Union[BasicType, StructType]
+
+COERCION = {
+    Type.INT: {
+        Type.BOOL: lambda x: Value(BasicType.BOOL, x.value() != 0),
+    },
+}
 
 # Represents a value, which has a type and its value
 class Value:
@@ -28,41 +39,40 @@ class Value:
     
 def create_value(val) -> Value:
     if val == InterpreterBase.TRUE_DEF:
-        return Value(Type.BOOL, True)
+        return Value(BasicType.BOOL, True)
     elif val == InterpreterBase.FALSE_DEF:
-        return Value(Type.BOOL, False)
+        return Value(BasicType.BOOL, False)
     elif isinstance(val, str):
-        return Value(Type.STRING, val)
+        return Value(BasicType.STRING, val)
     elif isinstance(val, int):
-        return Value(Type.INT, val)
+        return Value(BasicType.INT, val)
     else:
         raise ValueError("Unknown value type")
 
 def get_printable(val) -> str:
-    match val.type():
-        case Type.INT:
-            return str(val.value())
-        case Type.STRING:
-            return val.value()
-        case Type.BOOL:
-            return "true" if val.value() else "false"
-        case _:
-            raise ValueError("Not printable type")
+    t = val.type()
+    if t == BasicType.INT:
+        return str(val.value())
+    if t == BasicType.STRING:
+        return val.value()
+    if t == BasicType.BOOL:
+        return "true" if val.value() else "false"
+    if isinstance(t, StructType) and val.value() is None:
+        return "nil"
+    raise ValueError("Not printable type")
 
 def get_default_value(t: str) -> Value|None:
     match t:
-        case Type.INT:
-            return Value(Type.INT, 0)
-        case Type.STRING:
-            return Value(Type.STRING, "")
-        case Type.BOOL:
-            return Value(Type.BOOL, False)
-        case Type.NIL:
-            return Value(Type.NIL, None)
-        case Type.VOID:
-            return Value(Type.NIL, None)
-        # case Type.STRUCT:
-        #     return Value(Type.STRUCT, None)
+        case BasicType.INT:
+            return Value(BasicType.INT, 0)
+        case BasicType.STRING:
+            return Value(BasicType.STRING, "")
+        case BasicType.BOOL:
+            return Value(BasicType.BOOL, False)
+        case BasicType.NIL | BasicType.VOID:
+            return Value(BasicType.NIL, None)
+        case "struct":
+            return Value(t, None)
         case _:
             return None
 
@@ -81,37 +91,37 @@ class Operator:
     
     OP_TO_LAMBDA = {
         Type.INT: {
-            "+": lambda x, y: Value(Type.INT, x.value() + y.value()),
-            "-": lambda x, y: Value(Type.INT, x.value() - y.value()),
-            "*": lambda x, y: Value(Type.INT, x.value() * y.value()),
-            "/": lambda x, y: Value(Type.INT, x.value() // y.value()),
-            "==": lambda x, y: Value(Type.BOOL, x.type() == y.type() and x.value() == y.value()),
-            "!=": lambda x, y: Value(Type.BOOL, x.type() != y.type() or x.value() != y.value()),
-            ">=": lambda x, y: Value(Type.BOOL, x.value() >= y.value()),
-            "<=": lambda x, y: Value(Type.BOOL, x.value() <= y.value()),
-            ">": lambda x, y: Value(Type.BOOL, x.value() > y.value()),
-            "<": lambda x, y: Value(Type.BOOL, x.value() < y.value()),
-            "neg": lambda x: Value(Type.INT, -x.value()),
+            "+": lambda x, y: Value(BasicType.INT, x.value() + y.value()),
+            "-": lambda x, y: Value(BasicType.INT, x.value() - y.value()),
+            "*": lambda x, y: Value(BasicType.INT, x.value() * y.value()),
+            "/": lambda x, y: Value(BasicType.INT, x.value() // y.value()),
+            "==": lambda x, y: Value(BasicType.BOOL, x.type() == y.type() and x.value() == y.value()),
+            "!=": lambda x, y: Value(BasicType.BOOL, x.type() != y.type() or x.value() != y.value()),
+            ">=": lambda x, y: Value(BasicType.BOOL, x.value() >= y.value()),
+            "<=": lambda x, y: Value(BasicType.BOOL, x.value() <= y.value()),
+            ">": lambda x, y: Value(BasicType.BOOL, x.value() > y.value()),
+            "<": lambda x, y: Value(BasicType.BOOL, x.value() < y.value()),
+            "neg": lambda x: Value(BasicType.INT, -x.value()),
         },
         Type.BOOL: {
-            "==": lambda x, y: Value(Type.BOOL, x.type() == y.type() and x.value() == y.value()),
-            "!=": lambda x, y: Value(Type.BOOL, x.type() != y.type() or x.value() != y.value()),
-            "||": lambda x, y: Value(Type.BOOL, x.value() or y.value()),
-            "&&": lambda x, y: Value(Type.BOOL, x.value() and y.value()),
-            "!": lambda x: Value(Type.BOOL, not x.value()),
+            "==": lambda x, y: Value(BasicType.BOOL, x.type() == y.type() and x.value() == y.value()),
+            "!=": lambda x, y: Value(BasicType.BOOL, x.type() != y.type() or x.value() != y.value()),
+            "||": lambda x, y: Value(BasicType.BOOL, x.value() or y.value()),
+            "&&": lambda x, y: Value(BasicType.BOOL, x.value() and y.value()),
+            "!": lambda x: Value(BasicType.BOOL, not x.value()),
         },
         Type.STRING: {
-            "+": lambda x, y: Value(Type.STRING, x.value() + y.value()),
-            "==": lambda x, y: Value(Type.BOOL, x.value() == y.value()),
-            "!=": lambda x, y: Value(Type.BOOL, x.value() != y.value()),
+            "+": lambda x, y: Value(BasicType.STRING, x.value() + y.value()),
+            "==": lambda x, y: Value(BasicType.BOOL, x.value() == y.value()),
+            "!=": lambda x, y: Value(BasicType.BOOL, x.value() != y.value()),
         },
         Type.NIL: {
-            "==": lambda x, y: Value(Type.BOOL, x.type() == y.type() and x.value() == y.value()),
-            "!=": lambda x, y: Value(Type.BOOL, x.type() != y.type() or x.value() != y.value()),
+            "==": lambda x, y: Value(BasicType.BOOL, x.type() == y.type() and x.value() == y.value()),
+            "!=": lambda x, y: Value(BasicType.BOOL, x.type() != y.type() or x.value() != y.value()),
         },
         Type.STRUCT: {
-            "==": lambda x, y: Value(Type.BOOL, x.value() == y.value()),
-            "!=": lambda x, y: Value(Type.BOOL, x.value() != y.value()),
+            "==": lambda x, y: Value(BasicType.BOOL, x.value() == y.value()),
+            "!=": lambda x, y: Value(BasicType.BOOL, x.value() != y.value()),
         }
     }
 
