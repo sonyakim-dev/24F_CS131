@@ -1,6 +1,3 @@
-from dataclasses import fields
-from functools import reduce
-
 from brewparse import parse_program
 from element import Element
 from env import EnvironmentManager
@@ -13,7 +10,7 @@ class Interpreter(InterpreterBase):
         self.trace_output = trace_output # debug purpose
         self.env = EnvironmentManager() # store variables
         self.func_table: dict[tuple[str, int], Element] = {} # key: (func name, arg count)
-        self.struct_table: dict[str, dict[str, str]] = {} # {struct_name: {field_name: field_type}}
+        self.struct_table: dict[str, dict[str, Value]] = {} # {struct_name: {field_name: Value}}
 
     def run(self, program) -> None:
         ast = parse_program(program) # generate Abstract Syntax Tree of the program
@@ -27,23 +24,17 @@ class Interpreter(InterpreterBase):
             func_name = func_node.get("name")
             params = func_node.get("args")
             return_type = func_node.get("return_type")
-            return_value = get_default_value(return_type)
 
             if func_name in self.func_table:
                 super().error(ErrorType.NAME_ERROR, f"Function {func_name} defined more than once")
-            if return_value is None and return_type not in self.struct_table:
+            if return_type not in FuncType and return_type not in self.struct_table: # check return type
                 super().error(ErrorType.TYPE_ERROR, f"Function {func_name} has invalid return type")
-            for param in params:
+            for param in params: # check param types
                 param_type = param.get("var_type")
-                param_value = get_default_value(param_type)
-                if param_value is None and param_type not in self.struct_table:
+                if param_type not in DeclareType and param_type not in self.struct_table:
                     super().error(ErrorType.TYPE_ERROR, f"Function {func_name} has invalid parameter type")
 
             self.func_table[(func_name, len(func_node.get("args")))] = func_node
-        """ NOTE:
-        Use of an invalid/undefined/missing type for a parameter or return type must result in an error of ErrorType.TYPE_ERROR.
-        This check should happen before the execution of the main function, 
-        """
 
     def __set_struct_table(self, ast: Element) -> None:
         for struct_node in ast.get("structs"):
@@ -54,10 +45,18 @@ class Interpreter(InterpreterBase):
 
             fields = {}
             for field_node in struct_node.get("fields"):
+                field_name = field_node.get("name")
                 var_type = field_node.get("var_type")
-                if var_type not in DECLARABLE_TYPES and var_type not in self.struct_table:
-                    super().error(ErrorType.TYPE_ERROR, f"Struct {struct_name} has invalid field type")
-                fields[field_node.get("name")] = var_type
+
+                if var_type in DeclareType:
+                    var_type = BasicType(var_type)
+                elif var_type in self.struct_table:
+                    var_type = StructType(var_type)
+                else:
+                    super().error(ErrorType.TYPE_ERROR, f"'{field_name}' in '{struct_name}' has invalid type")
+
+                fields[field_name] = get_default_value(var_type)
+
             self.struct_table[struct_name] = fields
 
     def __get_func_by_name(self, func_key: tuple[str, int]) -> Element:
@@ -98,31 +97,35 @@ class Interpreter(InterpreterBase):
     def __var_def(self, vardef_node: Element) -> None:
         var_name = vardef_node.get("name")
         var_type = vardef_node.get("var_type")
-        var_value = get_default_value(var_type)
 
-        if var_type not in DECLARABLE_TYPES:
-            if var_type not in self.struct_table:
-                super().error(ErrorType.TYPE_ERROR, f"Invalid type {vardef_node.get('var_type')} for variable {var_name}")
-            var_value = Value(var_type, None)
+        if var_type in DeclareType:
+            var_type = BasicType(var_type)
+        elif var_type in self.struct_table:
+            var_type = StructType(var_type)
+        else:
+            super().error(ErrorType.TYPE_ERROR, f"Invalid type {vardef_node.get('var_type')} for variable {var_name}")
+
+        var_value = get_default_value(var_type)
 
         if not self.env.create(var_name, var_value):
             super().error(ErrorType.NAME_ERROR, f"Variable {var_name} has already been defined")
 
     def __assign(self, assign_node: Element) -> None:
         var_name = assign_node.get("name")
-        var_value = self.__eval_expr(assign_node.get("expression"))
         var_def = self.env.get(var_name)
+        value = self.__eval_expr(assign_node.get("expression"))
 
         if isinstance(var_def, ErrorType):
             super().error(var_def, f"Variable {var_name} not found")
 
-        if var_def.type() != var_value.type():
-            super().error(ErrorType.TYPE_ERROR, f"Cannot assign {var_value.type()} to variable {var_name}")
+        # print(var_def.type(), type(var_def.type()), value.type(), type(value.type()))
+        if var_def.type() != value.type():
+            super().error(ErrorType.TYPE_ERROR, f"Cannot assign {value.type()} to variable {var_name}")
 
-        res = self.env.assign(var_name, var_value)
+        res = self.env.assign(var_name, value)
 
         if isinstance(res, ErrorType):
-            super().error(res, f"Cannot assign {var_value.type()} to variable {var_name}")
+            super().error(res, f"Cannot assign {value.type()} to variable {var_name}")
 
     def __call_func(self, fcall_node: Element) -> Value:
         func_name = fcall_node.get("name")
@@ -209,15 +212,17 @@ class Interpreter(InterpreterBase):
 
     def __eval_expr(self, expr_node: Element) -> Value:
         expr = expr_node.elem_type
-        if expr in {BasicType.INT, BasicType.STRING, BasicType.BOOL}:
-            return Value(expr, expr_node.get("val"))
-        if expr == BasicType.NIL:
-            return Value(expr, None)
+        if expr in DeclareType:
+            return Value(BasicType(expr), expr_node.get("val"))
+        if expr == BasicType.NIL.value:
+            return Value(BasicType(expr), None)
         if expr == "var": # can be struct type
             var_name = expr_node.get("name")
             val = self.env.get(var_name)
+
             if isinstance(val, ErrorType):
                 super().error(val, f"Variable '{var_name}' not found")
+
             return val
         if expr in Operator.UNA_OPS:
             return self.__eval_unary_op(expr_node)
@@ -226,18 +231,20 @@ class Interpreter(InterpreterBase):
         if expr == Statement.FUNC_CALL:
             return self.__call_func(expr_node)
         if expr == Statement.NEW:
-            var_type = expr_node.get("var_type")
-            return Value(var_type, self.__new_struct(var_type))
+            return self.__new_struct(expr_node)
         
         super().error(ErrorType.TYPE_ERROR, f"Unknown operand type: {expr}")
 
-    def __new_struct(self, struct_name: str) -> dict[str, Value]:
+    def __new_struct(self, expr_node: Element) -> Value:
+        struct_name = expr_node.get("var_type")
+
         if struct_name not in self.struct_table:
             super().error(ErrorType.NAME_ERROR, f"Struct {struct_name} not found")
 
         struct_fields = self.struct_table[struct_name]
-        return { field: get_default_value(type) if type in DECLARABLE_TYPES else Value(type, None)
-                 for field, type in struct_fields.items() }
+        value = { field: value for field, value in struct_fields.items() }
+
+        return Value(StructType(struct_name), value)
 
     def __eval_unary_op(self, expr_node: Element) -> Value: # neg, !
         op = self.__eval_expr(expr_node.get("op1"))
@@ -261,15 +268,14 @@ class Interpreter(InterpreterBase):
 
     def __call_print(self, fcall_node: Element) -> Value:
         args = fcall_node.get("args")
-        # s = reduce(lambda acc, arg: acc + get_printable(self.__eval_expr(arg)), args, "")
         s = ""
         for arg in args:
             val = self.__eval_expr(arg)
-            # TODO: can this be better?
-            if val.type() in self.struct_table and val.value() is None:
+            if isinstance(val.type(), StructType) and val.value() is None:
                 s += "nil"
             else:
                 s += get_printable(val)
+
         super().output(s)
         return Value(BasicType.NIL, None)
 

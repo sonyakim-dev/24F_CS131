@@ -1,33 +1,25 @@
 from interpreterv3 import Interpreter
-from type import *
 
 
 def main():
     program = """
 struct dog {
-  bark: int;
-  bite: int;
+ bark: int;
+ bite: int;
 }
 
-func bar() : int {
-  return;  /* no return value specified - returns 0 */
+func foo(d: dog) : dog {  /* d holds the same object reference that the koda variable holds */
+  d.bark = 10;
+  return d;  		/* this returns the same object reference that the koda variable holds */
 }
 
-func bletch() : bool {
-  print("hi");
-  /* no explicit return; bletch must return default bool of false */
-}
-
-func boing() : dog {
-  return;  /* returns nil */
-}
-
-func main() : void {
-   var val: int;
-   val = bar();
-   print(val);  /* prints 0 */
-   print(bletch()); /* prints false */
-   print(boing()); /* prints nil */
+ func main() : void {
+  var koda: dog;
+  var kippy: dog;
+  koda = new dog;
+  kippy = foo(koda);	/* kippy holds the same object reference as koda */
+  kippy.bite = 20;
+  print(koda.bark, " ", koda.bite); /* prints 10 20 */
 }
 """
     interpreter = Interpreter(trace_output=True)

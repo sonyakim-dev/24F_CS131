@@ -1,5 +1,5 @@
 from intbase import ErrorType
-from type import BasicType, StructType, Type, Value
+from type import *
 
 
 # The EnvironmentManager class keeps a mapping between each variable (aka symbol)
@@ -29,7 +29,7 @@ class EnvironmentManager:
                 return None, '', ErrorType.NAME_ERROR
 
             scope = scope.get(field)
-            if isinstance(scope.type(), BasicType.NIL): # nil check
+            if scope.type() == BasicType.NIL: # nil check
                 return None, '', ErrorType.FAULT_ERROR
 
             scope = scope.value() # step into the next scope
@@ -55,7 +55,7 @@ class EnvironmentManager:
 
     # Variable declaration
     def create(self, symbol: str, val: Value=None) -> bool:
-        if val is None: val = Value(Type.NIL, None) # default value
+        if val is None: val = Value(BasicType.NIL, None) # default value
         curr_env = self.environment[-1][-1]
         if symbol not in curr_env:
             curr_env[symbol] = val
