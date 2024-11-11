@@ -35,67 +35,26 @@ class EnvironmentManager:
             scope = scope.value() # step into the next scope
             if not isinstance(scope, dict): # struct type check
                 return None, '', ErrorType.TYPE_ERROR
-            """
-            If the variable to the left of a dot is not a struct type, then you must generate an error of ErrorType.TYPE_ERROR.
-            If the variable to the left of a dot is nil, then you must generate an error of ErrorType.FAULT_ERROR.
-            If a field name is invalid (e.g., it's not a valid field in a struct definition), then you must generate an error of ErrorType.NAME_ERROR.
-            """
+
         return scope, fields[-1], None
 
     # Gets the data associated a variable name
     def get(self, symbol: str) -> Value | ErrorType:
-        fields = symbol.split('.')
-        scope = self._find_scope(fields[0])
+        scope, field, error = self._traverse_scope(symbol)
+        if error is not None: return error
 
-        if scope is None: # base variable not in scope
+        result = scope.get(field)
+        if result is None:
             return ErrorType.NAME_ERROR
 
-        curr_val = scope[fields[0]]
-        # traverse nested fields
-        for field in fields[1:]:
-            val_value: dict|Value = curr_val.value()
-
-            if val_value is None: # check for nil
-                return ErrorType.FAULT_ERROR
-            if not isinstance(val_value, dict): # check for struct
-                return ErrorType.TYPE_ERROR
-            if field not in val_value: # check for field
-                return ErrorType.NAME_ERROR
-            """ NOTE:
-            If the variable to the left of a dot is not a struct type, then you must generate an error of ErrorType.TYPE_ERROR.
-            If the variable to the left of a dot is nil, then you must generate an error of ErrorType.FAULT_ERROR.
-            If a field name is invalid (e.g., it's not a valid field in a struct definition), then you must generate an error of ErrorType.NAME_ERROR.
-            """
-            curr_val = val_value[field]
-
-        return curr_val
+        return result
 
     # Assign a value to a variable name
     def assign(self, symbol: str, value: Value) -> ErrorType|None:
-        fields = symbol.split('.')
-        scope = self._find_scope(fields[0])
+        scope, field, error = self._traverse_scope(symbol)
+        if error is not None: return error
 
-        if scope is None: # base variable not in scope
-            return ErrorType.NAME_ERROR
-
-        # traverse nested fields up to the second-to-last field
-        for i in range(len(fields) - 1):
-            field = fields[i]
-            if field not in scope:  # field existence check
-                return ErrorType.NAME_ERROR
-
-            scope = scope.get(field)
-            if scope is None:  # nil check
-                return ErrorType.FAULT_ERROR
-
-            scope = scope.value() # step into the next scope
-            if not isinstance(scope, dict): # struct type check
-                return ErrorType.TYPE_ERROR
-
-        # assign the value to the final field
-        final_field = fields[-1]
-        scope[final_field] = value
-
+        scope[field] = value
         return None
 
     # Variable declaration

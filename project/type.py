@@ -8,7 +8,6 @@ class BasicType:
     BOOL = "bool"
     STRING = "string"
     NIL = "nil"
-    VOID = "void"
 
 class StructType:
     def __init__(self, name):
@@ -72,7 +71,7 @@ def get_default_value(t: str) -> Value|None:
             return Value(BasicType.STRING, "")
         case BasicType.BOOL:
             return Value(BasicType.BOOL, False)
-        case BasicType.NIL | BasicType.VOID:
+        case BasicType.NIL | "void":
             return Value(BasicType.NIL, None)
         case _:
             if isinstance(t, StructType):
