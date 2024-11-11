@@ -45,18 +45,22 @@ class Interpreter(InterpreterBase):
             fields = {}
             for field_node in struct_node.get("fields"):
                 field_name = field_node.get("name")
-                var_type = field_node.get("var_type")
+                var_type = self.__get_type(field_node.get("var_type"))
 
-                if var_type in DeclareType:
-                    var_type = BasicType(var_type)
-                elif var_type in self.struct_table:
-                    var_type = StructType(var_type)
-                else:
+                if isinstance(var_type, ErrorType):
                     super().error(ErrorType.TYPE_ERROR, f"'{field_name}' in '{struct_name}' has invalid type {var_type}'")
 
                 fields[field_name] = get_default_value(var_type)
 
             self.struct_table[struct_name] = fields
+
+    def __get_type(self, var_type: str) -> Type|ErrorType:
+        if var_type in DeclareType:
+            return BasicType(var_type)
+        elif var_type in self.struct_table:
+            return StructType(var_type)
+        else:
+            return ErrorType.TYPE_ERROR
 
     def __get_func_by_name(self, func_key: tuple[str, int]) -> Element:
         if func_key not in self.func_table:
@@ -95,13 +99,9 @@ class Interpreter(InterpreterBase):
 
     def __var_def(self, vardef_node: Element) -> None:
         var_name = vardef_node.get("name")
-        var_type = vardef_node.get("var_type")
+        var_type = self.__get_type(vardef_node.get("var_type"))
 
-        if var_type in DeclareType:
-            var_type = BasicType(var_type)
-        elif var_type in self.struct_table:
-            var_type = StructType(var_type)
-        else:
+        if isinstance(var_type, ErrorType):
             super().error(ErrorType.TYPE_ERROR, f"Invalid type {vardef_node.get('var_type')} for variable {var_name}")
 
         var_value = get_default_value(var_type)
@@ -152,18 +152,15 @@ class Interpreter(InterpreterBase):
                 self.env.push_block()
                 result, _ = self.__run_statements(func_node.get("statements"))
                 self.env.pop_block()
-
                 self.env.pop_env()
 
-                return_type = func_node.get("return_type")
-                if return_type in DeclareType:
-                    return_type = BasicType(return_type)
-                elif return_type in self.struct_table:
-                    return_type = StructType(return_type)
+                return_type = self.__get_type(func_node.get("return_type"))
                 # no need to check invalid return type since it's already checked in __set_function_table
 
                 if return_type != result.type():
-                    super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' must return '{return_type}'")
+                    result = try_conversion(result, return_type)
+                    if result is None:
+                        super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' must return '{return_type}'")
 
                 return result
 
@@ -268,8 +265,14 @@ class Interpreter(InterpreterBase):
         # only equality check is allowed for different types
         if lhs.type() != rhs.type() and oper not in ["==", "!="]:
             super().error(ErrorType.TYPE_ERROR, f"Incompatible types for {oper} operation")
-        
-        try:
+
+        # struct comparison
+        if oper in ["==", "!="] and isinstance(lhs.type(), StructType) and isinstance(rhs.type(), StructType):
+            if lhs.value() is None or rhs.value() is None:
+                return Value(BasicType.BOOL, lhs.value() == rhs.value())
+            return Value(BasicType.BOOL, id(lhs.value()) == id(rhs.value()))
+
+        try: # basic types
             return Operator.OP_TO_LAMBDA[lhs.type()][oper](lhs, rhs)
         except KeyError:
             super().error(ErrorType.TYPE_ERROR, f"Incompatible operator {oper} for type {lhs.type()}")

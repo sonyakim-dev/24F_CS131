@@ -4,22 +4,16 @@ from interpreterv3 import Interpreter
 def main():
     program = """
 struct dog {
- bark: int;
- bite: int;
+  name: string;
+  vaccinated: bool;  
 }
 
-func foo(d: dog) : dog {  /* d holds the same object reference that the koda variable holds */
-  d.bark = 10;
-  return d;  		/* this returns the same object reference that the koda variable holds */
-}
-
- func main() : void {
-  var koda: dog;
-  var kippy: dog;
-  koda = new dog;
-  kippy = foo(koda);	/* kippy holds the same object reference as koda */
-  kippy.bite = 20;
-  print(koda.bark, " ", koda.bite); /* prints 10 20 */
+func main() : void {
+  var d: dog;    /* d is an object reference whose value is nil */
+  var e: dog;
+  
+  d = new dog;
+  print(d == e);
 }
 """
     interpreter = Interpreter(trace_output=True)
