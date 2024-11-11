@@ -26,13 +26,13 @@ class Interpreter(InterpreterBase):
             return_type = func_node.get("return_type")
 
             if func_name in self.func_table:
-                super().error(ErrorType.NAME_ERROR, f"Function {func_name} defined more than once")
+                super().error(ErrorType.NAME_ERROR, f"Function '{func_name}' defined more than once")
             if return_type not in FuncType and return_type not in self.struct_table: # check return type
-                super().error(ErrorType.TYPE_ERROR, f"Function {func_name} has invalid return type")
+                super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' has invalid return type '{return_type}'")
             for param in params: # check param types
                 param_type = param.get("var_type")
                 if param_type not in DeclareType and param_type not in self.struct_table:
-                    super().error(ErrorType.TYPE_ERROR, f"Function {func_name} has invalid parameter type")
+                    super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' has invalid parameter type '{param_type}")
 
             self.func_table[(func_name, len(func_node.get("args")))] = func_node
 
@@ -40,8 +40,7 @@ class Interpreter(InterpreterBase):
         for struct_node in ast.get("structs"):
             struct_name = struct_node.get("name")
             if struct_name in self.struct_table:
-                super().error(ErrorType.NAME_ERROR, f"Struct {struct_name} defined more than once")
-            self.struct_table[struct_name] = {}
+                super().error(ErrorType.NAME_ERROR, f"Struct '{struct_name}' defined more than once")
 
             fields = {}
             for field_node in struct_node.get("fields"):
@@ -53,7 +52,7 @@ class Interpreter(InterpreterBase):
                 elif var_type in self.struct_table:
                     var_type = StructType(var_type)
                 else:
-                    super().error(ErrorType.TYPE_ERROR, f"'{field_name}' in '{struct_name}' has invalid type")
+                    super().error(ErrorType.TYPE_ERROR, f"'{field_name}' in '{struct_name}' has invalid type {var_type}'")
 
                 fields[field_name] = get_default_value(var_type)
 
@@ -61,16 +60,14 @@ class Interpreter(InterpreterBase):
 
     def __get_func_by_name(self, func_key: tuple[str, int]) -> Element:
         if func_key not in self.func_table:
-            super().error(ErrorType.NAME_ERROR, f"Function {func_key[0]} not found")
+            super().error(ErrorType.NAME_ERROR, f"Function '{func_key[0]}' not found")
             
         return self.func_table[func_key]
     
     def __run_statements(self, statement_nodes: list[Element]) -> tuple[Value, ExecStatus]:      
         for statement in statement_nodes:
-            if self.trace_output: # debug
-                print(" 👩‍💻 ", statement)
-                self.env._print()
-            
+            if self.trace_output: print(" 👩‍💻 ", statement)
+
             category = statement.elem_type
             match category:
                 case Statement.VAR_DEF:
@@ -91,7 +88,9 @@ class Interpreter(InterpreterBase):
                     return self.__call_return(statement), ExecStatus.RETURN
                 case _:
                     super().error(ErrorType.TYPE_ERROR, f"Unknown statement type: {category}")
-                    
+
+            if self.trace_output: self.env._print(category)
+
         return Value(BasicType.NIL, None), ExecStatus.CONTINUE
 
     def __var_def(self, vardef_node: Element) -> None:
@@ -116,16 +115,15 @@ class Interpreter(InterpreterBase):
         value = self.__eval_expr(assign_node.get("expression"))
 
         if isinstance(var_def, ErrorType):
-            super().error(var_def, f"Variable {var_name} not found")
+            super().error(var_def, f"Variable '{var_name}' not found")
 
-        # print(var_def.type(), type(var_def.type()), value.type(), type(value.type()))
         if var_def.type() != value.type():
-            super().error(ErrorType.TYPE_ERROR, f"Cannot assign {value.type()} to variable {var_name}")
+            super().error(ErrorType.TYPE_ERROR, f"Cannot assign '{value.type()}' to variable '{var_name}'")
 
         res = self.env.assign(var_name, value)
 
         if isinstance(res, ErrorType):
-            super().error(res, f"Cannot assign {value.type()} to variable {var_name}")
+            super().error(res, f"Cannot assign '{value.type()}' to variable '{var_name}'")
 
     def __call_func(self, fcall_node: Element) -> Value:
         func_name = fcall_node.get("name")
@@ -137,7 +135,7 @@ class Interpreter(InterpreterBase):
             case _: # user-defined function
                 func_hash = (func_name, len(fcall_node.get("args")))
                 if func_hash not in self.func_table:
-                    super().error(ErrorType.NAME_ERROR, f"Function {func_name} not found")
+                    super().error(ErrorType.NAME_ERROR, f"Function '{func_name}' not found")
                 
                 func_node = self.func_table[func_hash]
                 param_names = [arg_node.get("name") for arg_node in func_node.get("args")]
@@ -152,11 +150,21 @@ class Interpreter(InterpreterBase):
                 if self.trace_output: self.env._print(func_name) # debug
 
                 self.env.push_block()
-                # default_result = get_default_value(func_node.get("return_type"))
                 result, _ = self.__run_statements(func_node.get("statements"))
                 self.env.pop_block()
 
                 self.env.pop_env()
+
+                return_type = func_node.get("return_type")
+                if return_type in DeclareType:
+                    return_type = BasicType(return_type)
+                elif return_type in self.struct_table:
+                    return_type = StructType(return_type)
+                # no need to check invalid return type since it's already checked in __set_function_table
+
+                if return_type != result.type():
+                    super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' must return '{return_type}'")
+
                 return result
 
     def __call_if(self, if_node: Element) -> tuple[Value, ExecStatus]:
@@ -239,7 +247,7 @@ class Interpreter(InterpreterBase):
         struct_name = expr_node.get("var_type")
 
         if struct_name not in self.struct_table:
-            super().error(ErrorType.NAME_ERROR, f"Struct {struct_name} not found")
+            super().error(ErrorType.NAME_ERROR, f"Struct '{struct_name}' not found")
 
         struct_fields = self.struct_table[struct_name]
         value = { field: value for field, value in struct_fields.items() }
@@ -251,7 +259,7 @@ class Interpreter(InterpreterBase):
         try:
             return Operator.OP_TO_LAMBDA[op.type()][expr_node.elem_type](op)
         except KeyError:
-            super().error(ErrorType.TYPE_ERROR, f"Incompatible operator {expr_node.elem_type} for type {op.type()}")
+            super().error(ErrorType.TYPE_ERROR, f"Incompatible operator '{expr_node.elem_type}' for type '{op.type()}'")
         
     def __eval_op(self, expr_node: Element) -> Value:
         oper = expr_node.elem_type

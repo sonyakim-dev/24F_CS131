@@ -10,6 +10,8 @@ class BasicType(Enum):
     STRING = "string"
     NIL = "nil"
     VOID = "void"
+    def __str__(self): # debug print
+        return self.value
 
 class StructType:
     def __init__(self, name):
@@ -18,7 +20,7 @@ class StructType:
         if isinstance(other, StructType):
             return self.name == other.name
         return False
-    def __str__(self):
+    def __str__(self): # debug print
         return self.name
 
 Type = Union[BasicType, StructType]
