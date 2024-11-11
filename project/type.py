@@ -11,17 +11,20 @@ class BasicType:
     VOID = "void"
 
 class StructType:
-    name: str
+    def __init__(self, name):
+        self.name = name
     def __eq__(self, other): # struct comparison
         if isinstance(other, StructType):
             return self.name == other.name
         return False
+    def __str__(self):
+        return self.name
 
 Type = Union[BasicType, StructType]
-
+DECLARABLE_TYPES = [BasicType.INT, BasicType.BOOL, BasicType.STRING]
 COERCION = {
-    Type.INT: {
-        Type.BOOL: lambda x: Value(BasicType.BOOL, x.value() != 0),
+    BasicType.INT: {
+        BasicType.BOOL: lambda x: Value(BasicType.BOOL, x.value() != 0),
     },
 }
 
@@ -71,9 +74,9 @@ def get_default_value(t: str) -> Value|None:
             return Value(BasicType.BOOL, False)
         case BasicType.NIL | BasicType.VOID:
             return Value(BasicType.NIL, None)
-        case "struct":
-            return Value(t, None)
         case _:
+            if isinstance(t, StructType):
+                return Value(t, None)
             return None
 
 class Statement:
@@ -90,7 +93,7 @@ class Operator:
     BIN_OPS = {"+", "-", "*", "/", ">=", "<=", ">", "<", "||", "&&", "==", "!="}
     
     OP_TO_LAMBDA = {
-        Type.INT: {
+        BasicType.INT: {
             "+": lambda x, y: Value(BasicType.INT, x.value() + y.value()),
             "-": lambda x, y: Value(BasicType.INT, x.value() - y.value()),
             "*": lambda x, y: Value(BasicType.INT, x.value() * y.value()),
@@ -103,26 +106,26 @@ class Operator:
             "<": lambda x, y: Value(BasicType.BOOL, x.value() < y.value()),
             "neg": lambda x: Value(BasicType.INT, -x.value()),
         },
-        Type.BOOL: {
+        BasicType.BOOL: {
             "==": lambda x, y: Value(BasicType.BOOL, x.type() == y.type() and x.value() == y.value()),
             "!=": lambda x, y: Value(BasicType.BOOL, x.type() != y.type() or x.value() != y.value()),
             "||": lambda x, y: Value(BasicType.BOOL, x.value() or y.value()),
             "&&": lambda x, y: Value(BasicType.BOOL, x.value() and y.value()),
             "!": lambda x: Value(BasicType.BOOL, not x.value()),
         },
-        Type.STRING: {
+        BasicType.STRING: {
             "+": lambda x, y: Value(BasicType.STRING, x.value() + y.value()),
             "==": lambda x, y: Value(BasicType.BOOL, x.value() == y.value()),
             "!=": lambda x, y: Value(BasicType.BOOL, x.value() != y.value()),
         },
-        Type.NIL: {
+        BasicType.NIL: {
             "==": lambda x, y: Value(BasicType.BOOL, x.type() == y.type() and x.value() == y.value()),
             "!=": lambda x, y: Value(BasicType.BOOL, x.type() != y.type() or x.value() != y.value()),
         },
-        Type.STRUCT: {
-            "==": lambda x, y: Value(BasicType.BOOL, x.value() == y.value()),
-            "!=": lambda x, y: Value(BasicType.BOOL, x.value() != y.value()),
-        }
+        # Type.STRUCT: {
+        #     "==": lambda x, y: Value(BasicType.BOOL, x.value() == y.value()),
+        #     "!=": lambda x, y: Value(BasicType.BOOL, x.value() != y.value()),
+        # }
     }
 
 class ExecStatus(Enum):

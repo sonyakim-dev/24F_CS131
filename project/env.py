@@ -1,5 +1,5 @@
 from intbase import ErrorType
-from type import Type, Value
+from type import BasicType, StructType, Type, Value
 
 
 # The EnvironmentManager class keeps a mapping between each variable (aka symbol)
@@ -15,6 +15,32 @@ class EnvironmentManager:
             if base_field in env:
                 return env
         return None
+
+    def _traverse_scope(self, symbol: str) -> tuple[dict|None, str, ErrorType|None]:
+        fields = symbol.split('.')
+        scope = self._find_scope(fields[0])
+
+        if scope is None:
+            return None, '', ErrorType.NAME_ERROR
+
+        # traverse nested fields up to the second-to-last field
+        for field in fields[:-1]:
+            if field not in scope: # field existence check
+                return None, '', ErrorType.NAME_ERROR
+
+            scope = scope.get(field)
+            if isinstance(scope.type(), BasicType.NIL): # nil check
+                return None, '', ErrorType.FAULT_ERROR
+
+            scope = scope.value() # step into the next scope
+            if not isinstance(scope, dict): # struct type check
+                return None, '', ErrorType.TYPE_ERROR
+            """
+            If the variable to the left of a dot is not a struct type, then you must generate an error of ErrorType.TYPE_ERROR.
+            If the variable to the left of a dot is nil, then you must generate an error of ErrorType.FAULT_ERROR.
+            If a field name is invalid (e.g., it's not a valid field in a struct definition), then you must generate an error of ErrorType.NAME_ERROR.
+            """
+        return scope, fields[-1], None
 
     # Gets the data associated a variable name
     def get(self, symbol: str) -> Value | ErrorType:

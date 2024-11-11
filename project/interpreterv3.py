@@ -55,7 +55,7 @@ class Interpreter(InterpreterBase):
             fields = {}
             for field_node in struct_node.get("fields"):
                 var_type = field_node.get("var_type")
-                if var_type not in PRIMITIVE_TYPES and var_type not in self.struct_table:
+                if var_type not in DECLARABLE_TYPES and var_type not in self.struct_table:
                     super().error(ErrorType.TYPE_ERROR, f"Struct {struct_name} has invalid field type")
                 fields[field_node.get("name")] = var_type
             self.struct_table[struct_name] = fields
@@ -93,14 +93,14 @@ class Interpreter(InterpreterBase):
                 case _:
                     super().error(ErrorType.TYPE_ERROR, f"Unknown statement type: {category}")
                     
-        return Value(Type.NIL, None), ExecStatus.CONTINUE
+        return Value(BasicType.NIL, None), ExecStatus.CONTINUE
 
     def __var_def(self, vardef_node: Element) -> None:
         var_name = vardef_node.get("name")
         var_type = vardef_node.get("var_type")
         var_value = get_default_value(var_type)
 
-        if var_type not in PRIMITIVE_TYPES:
+        if var_type not in DECLARABLE_TYPES:
             if var_type not in self.struct_table:
                 super().error(ErrorType.TYPE_ERROR, f"Invalid type {vardef_node.get('var_type')} for variable {var_name}")
             var_value = Value(var_type, None)
@@ -158,12 +158,12 @@ class Interpreter(InterpreterBase):
 
     def __call_if(self, if_node: Element) -> tuple[Value, ExecStatus]:
         condition = self.__eval_expr(if_node.get("condition"))
-        if condition.type() != Type.BOOL:
+        if condition.type() != BasicType.BOOL:
             super().error(ErrorType.TYPE_ERROR, "If condition must be a boolean")
 
         self.env.push_block() # new child scope for if statement body
         
-        result, ret = Value(Type.NIL, None), ExecStatus.CONTINUE
+        result, ret = Value(BasicType.NIL, None), ExecStatus.CONTINUE
         if condition.value():
             result, ret = self.__run_statements(if_node.get("statements"))
         elif if_node.get("else_statements"):
@@ -184,11 +184,11 @@ class Interpreter(InterpreterBase):
             super().error(ErrorType.TYPE_ERROR, "For loop update must be an assignment")
         
         self.__assign(init)
-        result, ret = Value(Type.NIL, None), ExecStatus.CONTINUE
+        result, ret = Value(BasicType.NIL, None), ExecStatus.CONTINUE
         
         while True:
             condition_result = self.__eval_expr(condition)
-            if condition_result.type() != Type.BOOL:
+            if condition_result.type() != BasicType.BOOL:
                 super().error(ErrorType.TYPE_ERROR, "For loop condition must be a boolean")
             if condition_result.value() is False: break
 
@@ -202,18 +202,18 @@ class Interpreter(InterpreterBase):
         return result, ret
     
     def __call_return(self, return_node: Element) -> Value:
-        result = Value(Type.NIL, None) # void return
+        result = Value(BasicType.NIL, None) # void return
         if return_node.get("expression"):
             result = self.__eval_expr(return_node.get("expression"))
         return result
 
     def __eval_expr(self, expr_node: Element) -> Value:
         expr = expr_node.elem_type
-        if expr in {Type.INT, Type.STRING, Type.BOOL}:
+        if expr in {BasicType.INT, BasicType.STRING, BasicType.BOOL}:
             return Value(expr, expr_node.get("val"))
-        if expr == Type.NIL:
+        if expr == BasicType.NIL:
             return Value(expr, None)
-        if expr == Type.VARIABLE: # can be struct type
+        if expr == "var": # can be struct type
             var_name = expr_node.get("name")
             val = self.env.get(var_name)
             if isinstance(val, ErrorType):
@@ -236,7 +236,7 @@ class Interpreter(InterpreterBase):
             super().error(ErrorType.NAME_ERROR, f"Struct {struct_name} not found")
 
         struct_fields = self.struct_table[struct_name]
-        return { field: get_default_value(type) if type in PRIMITIVE_TYPES else Value(type, None)
+        return { field: get_default_value(type) if type in DECLARABLE_TYPES else Value(type, None)
                  for field, type in struct_fields.items() }
 
     def __eval_unary_op(self, expr_node: Element) -> Value: # neg, !
@@ -271,7 +271,7 @@ class Interpreter(InterpreterBase):
             else:
                 s += get_printable(val)
         super().output(s)
-        return Value(Type.NIL, None)
+        return Value(BasicType.NIL, None)
 
     def __call_input(self, fcall_node: Element) -> Value:
         args = fcall_node.get("args")
@@ -286,6 +286,6 @@ class Interpreter(InterpreterBase):
         func_name = fcall_node.get("name")
         match func_name:
             case "inputi":
-                return Value(Type.INT, int(usr_input))
+                return Value(BasicType.INT, int(usr_input))
             case "inputs":
-                return Value(Type.STRING, usr_input)
+                return Value(BasicType.STRING, usr_input)
