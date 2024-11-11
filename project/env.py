@@ -43,11 +43,8 @@ class EnvironmentManager:
         scope, field, error = self._traverse_scope(symbol)
         if error is not None: return error
 
-        result = scope.get(field)
-        if result is None:
-            return ErrorType.NAME_ERROR
-
-        return result
+        val = scope.get(field)
+        return val if val is not None else ErrorType.NAME_ERROR
 
     # Assign a value to a variable name
     def assign(self, symbol: str, value: Value) -> ErrorType|None:
@@ -55,7 +52,6 @@ class EnvironmentManager:
         if error is not None: return error
 
         scope[field] = value
-        return None
 
     # Variable declaration
     def create(self, symbol: str, val: Value=None) -> bool:
