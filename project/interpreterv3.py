@@ -8,43 +8,42 @@ from type import *
 class Interpreter(InterpreterBase):
     def __init__(self, console_output=True, inp=None, trace_output=False):
         super().__init__(console_output, inp)
-        self.trace_output = trace_output  # debug purpose
-        self.env = EnvironmentManager()  # store variables
-        self.func_table: dict[tuple[str, int], Element] = {}  # key: (func name, arg count)
-        self.struct_table: dict[str, dict[str, Value]] = {}  # {struct_name: {field_name: Value}}
+        self.trace_output = trace_output # debug purpose
+        self.env = EnvironmentManager() # store variables
+        self.func_table: dict[tuple[str, int], Element] = {} # key: (func name, arg count)
+        self.struct_table: dict[str, dict[str, Value]] = {} # {struct_name: {field_name: Value}}
 
     def run(self, program) -> None:
-        ast = parse_program(program)  # generate Abstract Syntax Tree of the program
-        self.__set_struct_table(ast)
-        self.__set_function_table(ast)
+        ast = parse_program(program) # generate Abstract Syntax Tree of the program
+        self.__set_struct_table(ast.get("structs"))
+        self.__set_function_table(ast.get("functions"))
         main_func = self.__get_func_by_name(("main", 0))
         self.__run_statements(main_func.get("statements"))
 
-    def __set_function_table(self, ast: Element) -> None:
-        for func_node in ast.get("functions"):
+    def __set_function_table(self, func_nodes: list[Element]) -> None:
+        for func_node in func_nodes:
             func_name = func_node.get("name")
             params = func_node.get("args")
             return_type = func_node.get("return_type")
 
             if func_name in self.func_table:
                 super().error(ErrorType.NAME_ERROR, f"Function '{func_name}' defined more than once")
-            if return_type not in FuncType and return_type not in self.struct_table:  # check return type
+            if return_type not in FuncType and return_type not in self.struct_table: # check return type
                 super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' has invalid return type '{return_type}'")
-            for param in params:  # check param types
+            for param in params: # check param types
                 param_type = param.get("var_type")
                 if param_type not in DeclareType and param_type not in self.struct_table:
-                    super().error(ErrorType.TYPE_ERROR,
-                                  f"Function '{func_name}' has invalid parameter type '{param_type}")
+                    super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' has invalid parameter type '{param_type}")
 
             self.func_table[(func_name, len(func_node.get("args")))] = func_node
 
-    def __set_struct_table(self, ast: Element) -> None:
-        for struct_node in ast.get("structs"):
+    def __set_struct_table(self, struct_nodes: list[Element]) -> None:
+        for struct_node in struct_nodes:
             struct_name = struct_node.get("name")
             if struct_name in self.struct_table:
                 super().error(ErrorType.NAME_ERROR, f"Struct '{struct_name}' defined more than once")
 
-            self.struct_table[struct_name] = {}  # in case a field type references itself (ex. List{next:List})
+            self.struct_table[struct_name] = {} # in case a field type references itself (ex. List{next:List})
 
             fields = {}
             for field_node in struct_node.get("fields"):
@@ -52,15 +51,14 @@ class Interpreter(InterpreterBase):
                 var_type = self.__get_type(field_node.get("var_type"))
 
                 if isinstance(var_type, ErrorType):
-                    super().error(ErrorType.TYPE_ERROR,
-                                  f"'{field_name}' in '{struct_name}' has invalid type '{var_type}'")
+                    super().error(ErrorType.TYPE_ERROR, f"'{field_name}' in '{struct_name}' has invalid type '{var_type}'")
 
                 fields[field_name] = get_default_value(var_type)
 
             self.struct_table[struct_name] = fields
 
-    def __get_type(self, var_type: str) -> Type | ErrorType:
-        if var_type in BasicType:
+    def __get_type(self, var_type: str) -> Type|ErrorType:
+        if BasicType.contains(var_type): # python 3.11 does not support 'in' operator for enum class
             return BasicType(var_type)
         elif var_type in self.struct_table:
             return StructType(var_type)
@@ -87,13 +85,13 @@ class Interpreter(InterpreterBase):
                     self.__call_func(statement)
                 case Statement.IF_STATEMENT:
                     result, ret = self.__call_if(statement)
-                    if ret == ExecStatus.RETURN:  # return early if return statement is encountered
+                    if ret == ExecStatus.RETURN: # return early if return statement is encountered
                         return result, ret
                 case Statement.FOR_STATEMENT:
                     result, ret = self.__call_for(statement)
-                    if ret == ExecStatus.RETURN:  # return early if return statement is encountered
+                    if ret == ExecStatus.RETURN: # return early if return statement is encountered
                         return result, ret
-                case Statement.RETURN:  # return immediately
+                case Statement.RETURN: # return immediately
                     return self.__call_return(statement), ExecStatus.RETURN
                 case _:
                     super().error(ErrorType.TYPE_ERROR, f"Unknown statement type: {category}")
@@ -140,29 +138,27 @@ class Interpreter(InterpreterBase):
                 return self.__call_print(fcall_node)
             case "inputi" | "inputs":
                 return self.__call_input(fcall_node)
-            case _:  # user-defined function
+            case _: # user-defined function
                 func_hash = (func_name, len(fcall_node.get("args")))
                 if func_hash not in self.func_table:
                     super().error(ErrorType.NAME_ERROR, f"Function '{func_name}' not found")
 
                 func_node = self.func_table[func_hash]
-                params = dict([(arg_node.get("name"), self.__get_type(arg_node.get("var_type"))) for arg_node in
-                               func_node.get("args")])
+                params = dict([(arg_node.get("name"), self.__get_type(arg_node.get("var_type"))) for arg_node in func_node.get("args")])
                 # no need to check invalid parameter type since it's already checked in __set_function_table
                 arg_values = [self.__eval_expr(arg) for arg in fcall_node.get("args")]
 
-                self.env.push_env()  # new environment for function call
+                self.env.push_env() # new environment for function call
 
                 # map arguments to parameters and add to environment
-                for (param_name, param_value), arg_value in zip(params.items(), arg_values):
+                for (param_name,param_value), arg_value in zip(params.items(), arg_values):
                     if param_value != arg_value.type():
                         arg_value = try_conversion(arg_value, param_value)
                         if arg_value is None:
-                            super().error(ErrorType.TYPE_ERROR,
-                                          f"Function '{func_name}' expects '{param_value}' for '{param_name}'")
+                            super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' expects '{param_value}' for '{param_name}'")
                     self.env.create(param_name, arg_value)
 
-                if self.trace_output: self.env._print(func_name)  # debug
+                if self.trace_output: self.env._print(func_name) # debug
 
                 self.env.push_block()
                 result, _ = self.__run_statements(func_node.get("statements"))
@@ -188,7 +184,7 @@ class Interpreter(InterpreterBase):
             if condition is None:
                 super().error(ErrorType.TYPE_ERROR, "If condition must be a boolean")
 
-        self.env.push_block()  # new child scope for if statement body
+        self.env.push_block() # new child scope for if statement body
 
         result, ret = Value(BasicType.NIL, None), ExecStatus.CONTINUE
         if condition.value():
@@ -221,7 +217,7 @@ class Interpreter(InterpreterBase):
                     super().error(ErrorType.TYPE_ERROR, "For loop condition must be a boolean")
             if condition_result.value() is False: break
 
-            self.env.push_block()  # new child scope for for loop body
+            self.env.push_block() # new child scope for for loop body
             result, ret = self.__run_statements(for_node.get("statements"))
             self.env.pop_block()
             if ret == ExecStatus.RETURN: break
@@ -231,7 +227,7 @@ class Interpreter(InterpreterBase):
         return result, ret
 
     def __call_return(self, return_node: Element) -> Value:
-        result = Value(BasicType.NIL, None)  # void return
+        result = Value(BasicType.NIL, None) # void return
         if return_node.get("expression"):
             result = self.__eval_expr(return_node.get("expression"))
         return result
@@ -242,7 +238,7 @@ class Interpreter(InterpreterBase):
             return Value(BasicType(expr), expr_node.get("val"))
         if expr == BasicType.NIL.value:
             return Value(BasicType(expr), None)
-        if expr == "var":  # can be struct type
+        if expr == "var": # can be struct type
             var_name = expr_node.get("name")
             val = self.env.get(var_name)
             if isinstance(val, ErrorType):
@@ -266,11 +262,11 @@ class Interpreter(InterpreterBase):
             super().error(ErrorType.NAME_ERROR, f"Struct '{struct_name}' not found")
 
         struct_fields = self.struct_table[struct_name]
-        value = {field: value for field, value in struct_fields.items()}
+        value = { field: value for field, value in struct_fields.items() }
 
         return Value(StructType(struct_name), value)
 
-    def __eval_unary_op(self, expr_node: Element) -> Value:  # neg, !
+    def __eval_unary_op(self, expr_node: Element) -> Value: # neg, !
         op = self.__eval_expr(expr_node.get("op1"))
         try:
             return Operator.OP_TO_LAMBDA[op.type()][expr_node.elem_type](op)
@@ -281,22 +277,26 @@ class Interpreter(InterpreterBase):
         oper = expr_node.elem_type
         lhs, rhs = self.__eval_expr(expr_node.get("op1")), self.__eval_expr(expr_node.get("op2"))
 
-        # struct comparison
+        # handle equality operators for struct types
         if oper in ["==", "!="]:
-            if isinstance(lhs.type(), StructType):
-                if lhs.value() is None: lhs = Value(BasicType.NIL, None)
-            if isinstance(rhs.type(), StructType):
-                if rhs.value() is None: rhs = Value(BasicType.NIL, None)
-            if isinstance(lhs.type(), StructType) and isinstance(rhs.type(), StructType):
-                return Value(BasicType.BOOL, id(lhs.value()) == id(rhs.value()))
-            if isinstance(lhs.type(), StructType) or isinstance(rhs.type(), StructType):
-                return Value(BasicType.BOOL, lhs.value() == rhs.value() if oper == "==" else lhs.value() != rhs.value())
+            # normalize None value structs to NIL type
+            if isinstance(lhs.type(), StructType) and lhs.value() is None:
+                lhs = Value(BasicType.NIL, None)
+            if isinstance(rhs.type(), StructType) and rhs.value() is None:
+                rhs = Value(BasicType.NIL, None)
 
-        # only equality check is allowed for different types
-        if lhs.type() != rhs.type():
+            if isinstance(lhs.type(), StructType) and isinstance(rhs.type(), StructType):
+                res = id(lhs.value()) == id(rhs.value())
+                return Value(BasicType.BOOL, res if oper == "==" else not res)
+            elif isinstance(lhs.type(), StructType) or isinstance(rhs.type(), StructType):
+                res = lhs.value() == rhs.value()
+                return Value(BasicType.BOOL, res if oper == "==" else not res)
+
+        # for base type, types must match except for equality operators
+        if lhs.type() != rhs.type() and oper not in ["==", "!="]:
             super().error(ErrorType.TYPE_ERROR, f"Incompatible types for {oper} operation")
 
-        try:  # basic types
+        try: # basic types
             return Operator.OP_TO_LAMBDA[lhs.type()][oper](lhs, rhs)
         except KeyError:
             super().error(ErrorType.TYPE_ERROR, f"Incompatible operator {oper} for type {lhs.type()}")

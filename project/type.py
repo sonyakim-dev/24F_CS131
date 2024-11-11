@@ -10,6 +10,11 @@ class BasicType(Enum):
     STRING = "string"
     NIL = "nil"
     VOID = "void"
+
+    @classmethod
+    def contains(cls, other):
+        return any(other == item.value for item in cls)
+
     def __str__(self): # debug print
         return self.value
 
