@@ -46,10 +46,10 @@ func main() : void {
     var l: list;
     var r: list;
 
-    n = inputi();
+    n = inputi("iterate: ");
     for (i = n; i; i = i - 1) {
         var n: int;
-        n = inputi();
+        n = inputi("val: ");
         l = cons(n, l);
     }
     r = reverse(l);
@@ -81,6 +81,14 @@ N=8
 *OUT*
 */
 """
+    program2 = """
+    func main() : void {
+        var i: int;
+        for (i = 3; i; i = i - 1) {
+            print(i);
+        }
+    }
+    """
     interpreter = Interpreter(trace_output=True)
     interpreter.run(program)
 
