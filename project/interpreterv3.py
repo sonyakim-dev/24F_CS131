@@ -1,11 +1,9 @@
 from functools import reduce
-
 from brewparse import parse_program
 from element import Element
 from env import EnvironmentManager
 from intbase import ErrorType
 from type import *
-
 
 class Interpreter(InterpreterBase):
     def __init__(self, console_output=True, inp=None, trace_output=False):
@@ -144,7 +142,7 @@ class Interpreter(InterpreterBase):
                     super().error(ErrorType.NAME_ERROR, f"Function '{func_name}' not found")
 
                 func_node = self.func_table[func_hash]
-                params = dict([(arg_node.get("name"), self.__get_type(arg_node.get("var_type"))) for arg_node in func_node.get("args")])
+                params = {arg_node.get("name"): self.__get_type(arg_node.get("var_type")) for arg_node in func_node.get("args")}
                 # no need to check invalid parameter type since it's already checked in __set_function_table
                 arg_values = [self.__eval_expr(arg) for arg in fcall_node.get("args")]
 
@@ -273,6 +271,7 @@ class Interpreter(InterpreterBase):
 
     def __eval_unary_op(self, expr_node: Element) -> Value: # neg, !
         op = self.__eval_expr(expr_node.get("op1"))
+        op, _ = try_conversion(op, create_value("true"))
         try:
             return Operator.OP_TO_LAMBDA[op.type()][expr_node.elem_type](op)
         except KeyError:
@@ -281,10 +280,11 @@ class Interpreter(InterpreterBase):
     def __eval_op(self, expr_node: Element) -> Value:
         oper = expr_node.elem_type
         lhs, rhs = self.__eval_expr(expr_node.get("op1")), self.__eval_expr(expr_node.get("op2"))
-        lhs, rhs = normalize_struct(lhs), normalize_struct(rhs) # normalize None value structs to NIL value
+        lhs, rhs = try_conversion(lhs, rhs)
 
         # handle equality operators for struct types
         if oper in Operator.EQ_OPS:
+            lhs, rhs = normalize_struct(lhs), normalize_struct(rhs) # normalize None value structs to NIL value
             if isinstance(lhs.type(), StructType):
                 return Operator.OP_TO_LAMBDA[StructType.STRUCT][oper](lhs, rhs)
             elif isinstance(rhs.type(), StructType):

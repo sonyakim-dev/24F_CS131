@@ -1,8 +1,6 @@
 from enum import Enum, auto
 from typing import Union
-
 from intbase import InterpreterBase
-
 
 class BasicType(Enum):
     INT = "int"
@@ -12,10 +10,9 @@ class BasicType(Enum):
     VOID = "void"
 
     @classmethod
-    def contains(cls, other):
+    def contains(cls, other): # Python v3.11 Enum does not support 'in' operation
         """ Check if the type is BasicType """
         return any(other == item.value for item in cls)
-
     def __str__(self):  # debug print
         return self.value
 
@@ -23,20 +20,16 @@ class StructType:
     STRUCT = "struct"
     def __init__(self, name):
         self.name = name
-
     def __eq__(self, other):  # struct comparison
         if isinstance(other, StructType):
             return self.name == other.name
         return False
-
     def __str__(self):  # debug print
         return self.name
-
 
 Type = Union[BasicType, StructType]
 VarType = {BasicType.INT.value, BasicType.BOOL.value, BasicType.STRING.value}
 FuncType = {BasicType.INT.value, BasicType.BOOL.value, BasicType.STRING.value, BasicType.VOID.value}
-
 
 # Represents a value, which has a type and its value
 class Value:
@@ -50,11 +43,14 @@ class Value:
     def type(self):
         return self.t
 
-
 COERCION = {
     BasicType.INT: {
         BasicType.BOOL: lambda x: Value(BasicType.BOOL, x.value() != 0),
     },
+}
+COERCION_PRIORITY = {
+    BasicType.INT: 1,
+    BasicType.BOOL: 2
 }
 
 def try_conversion(old: Value, new: Value) -> tuple[Value, Value]:
@@ -117,7 +113,6 @@ def get_printable(val: Value) -> str:
         return "nil"
     raise ValueError(f"Not printable type {t}")
 
-
 class Statement:
     VAR_DEF = "vardef"
     ASSIGNMENT = "="
@@ -126,7 +121,6 @@ class Statement:
     FOR_STATEMENT = "for"
     RETURN = "return"
     NEW = "new"
-
 
 class Operator:
     UNA_OPS = {"neg", "!"}
