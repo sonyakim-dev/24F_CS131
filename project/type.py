@@ -67,7 +67,7 @@ def try_conversion(old: Value, new: Value) -> tuple[Value, Value]:
     # basic type coercion
     if isinstance(old.type(), BasicType) and isinstance(new.type(), BasicType)\
             and old.type() in COERCION and new.type() in COERCION[old.type()]:
-        return COERCION[old.type()][new.type()](old), old
+        return COERCION[old.type()][new.type()](old), new
 
     return old, new
 

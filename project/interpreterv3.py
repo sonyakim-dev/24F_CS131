@@ -94,13 +94,13 @@ class Interpreter(InterpreterBase):
                     if ret == ExecStatus.RETURN: # return early if return statement is encountered
                         return result, ret
                 case Statement.RETURN: # return immediately
-                    return self.__call_return(statement), ExecStatus.RETURN
+                    return self.__call_return(statement)
                 case _:
                     super().error(ErrorType.TYPE_ERROR, f"Unknown statement type: {category}")
 
             if self.trace_output: self.env._print(category)
 
-        return Value(BasicType.NIL, None), ExecStatus.CONTINUE
+        return Value(BasicType.VOID, None), ExecStatus.CONTINUE
 
     def __var_def(self, vardef_node: Element) -> None:
         var_name = vardef_node.get("name")
@@ -153,8 +153,9 @@ class Interpreter(InterpreterBase):
                 # map arguments to parameters and add to environment
                 for (param_name,param_type), arg_value in zip(params.items(), arg_values):
                     param_value = get_default_value(param_type)
+                    # print("!", param_type, )
                     if param_value != arg_value.type():
-                        param_value, arg_value = try_conversion(param_value, arg_value)
+                        arg_value, param_value = try_conversion(arg_value, param_value)
                         if param_value.type() != arg_value.type():
                             super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' expects '{param_value}' for '{param_name}'")
                     self.env.create(param_name, arg_value)
@@ -167,11 +168,14 @@ class Interpreter(InterpreterBase):
                 self.env.pop_env()
 
                 return_type = self.__get_type(func_node.get("return_type"))
+                return_value = get_default_value(return_type)
                 # no need to check invalid return type since it's already checked in __set_function_table
 
-                if return_type == BasicType.VOID and result.type() == BasicType.NIL:
-                    return Value(BasicType.VOID, None)
-                result, _ = try_conversion(result, get_default_value(return_type))
+                # if function has no return statement or simply return without value, return default value
+                if result.type() == BasicType.VOID and result.type() != return_type:
+                    return return_value
+
+                result, _ = try_conversion(result, return_value)
                 if result.type() != return_type:
                     super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' must return '{return_type}'")
 
@@ -186,7 +190,7 @@ class Interpreter(InterpreterBase):
 
         self.env.push_block() # new child scope for if statement body
 
-        result, ret = Value(BasicType.NIL, None), ExecStatus.CONTINUE
+        result, ret = Value(BasicType.VOID, None), ExecStatus.CONTINUE
         if condition.value():
             result, ret = self.__run_statements(if_node.get("statements"))
         elif if_node.get("else_statements"):
@@ -207,7 +211,7 @@ class Interpreter(InterpreterBase):
             super().error(ErrorType.TYPE_ERROR, "For loop update must be an assignment")
 
         self.__assign(init)
-        result, ret = Value(BasicType.NIL, None), ExecStatus.CONTINUE
+        result, ret = Value(BasicType.VOID, None), ExecStatus.CONTINUE
 
         while True:
             condition_result = self.__eval_expr(condition)
@@ -226,11 +230,12 @@ class Interpreter(InterpreterBase):
 
         return result, ret
 
-    def __call_return(self, return_node: Element) -> Value:
-        result = Value(BasicType.NIL, None) # void return
+    def __call_return(self, return_node: Element) -> tuple[Value, ExecStatus]:
+        result = Value(BasicType.VOID, None) # void return
         if return_node.get("expression"):
             result = self.__eval_expr(return_node.get("expression"))
-        return result
+
+        return result, ExecStatus.RETURN
 
     def __eval_expr(self, expr_node: Element) -> Value:
         expr = expr_node.elem_type
@@ -298,7 +303,7 @@ class Interpreter(InterpreterBase):
         args = fcall_node.get("args")
         s = reduce(lambda acc, arg: acc + get_printable(self.__eval_expr(arg)), args, "")
         super().output(s)
-        return Value(BasicType.NIL, None)
+        return Value(BasicType.VOID, None)
 
     def __call_input(self, fcall_node: Element) -> Value:
         args = fcall_node.get("args")
