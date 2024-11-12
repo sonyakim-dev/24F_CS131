@@ -18,7 +18,7 @@ class Interpreter(InterpreterBase):
         self.__set_struct_table(ast.get("structs"))
         self.__set_function_table(ast.get("functions"))
         main_func = self.__get_func_by_name(("main", 0))
-        self.__run_statements(main_func.get("statements"))
+        self.__call_func(main_func)
 
     def __set_function_table(self, func_nodes: list[Element]) -> None:
         for func_node in func_nodes:
@@ -33,7 +33,7 @@ class Interpreter(InterpreterBase):
             for param in params: # check param types
                 param_type = param.get("var_type")
                 if param_type not in VarType and param_type not in self.struct_table:
-                    super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' has invalid parameter type '{param_type}")
+                    super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' has invalid parameter type '{param_type}'")
 
             self.func_table[(func_name, len(func_node.get("args")))] = func_node
 
@@ -270,9 +270,10 @@ class Interpreter(InterpreterBase):
 
         return Value(StructType(struct_name), value)
 
-    def __eval_unary_op(self, expr_node: Element) -> Value: # neg, !
+    def __eval_unary_op(self, expr_node: Element) -> Value: # neg for INT, ! for BOOL
         op = self.__eval_expr(expr_node.get("op1"))
-        op, _ = try_conversion(op, create_value("true"))
+        op, _ = try_conversion(op, create_value("true") if expr_node.elem_type == "!" else create_value(0))
+
         try:
             return Operator.OP_TO_LAMBDA[op.type()][expr_node.elem_type](op)
         except KeyError:
@@ -284,9 +285,6 @@ class Interpreter(InterpreterBase):
 
         # handle equality operators for struct types
         if isinstance(lhs.type(), StructType) or isinstance(rhs.type(), StructType):
-            if oper not in Operator.EQ_OPS:
-                super().error(ErrorType.TYPE_ERROR, f"Incompatible operator '{oper}' for struct types")
-
             lhs, rhs = try_conversion(lhs, rhs)
             lhs, rhs = normalize_struct(lhs), normalize_struct(rhs) # normalize None value structs to NIL value
             if isinstance(lhs.type(), StructType) or isinstance(rhs.type(), StructType):
@@ -297,13 +295,13 @@ class Interpreter(InterpreterBase):
 
         lhs, rhs = coercion_by_priority(lhs, rhs)
 
-        # for base type, types must match except for equality operators
-        if lhs.type() != rhs.type() and oper not in Operator.EQ_OPS:
+        # types must match except for equality operators
+        if lhs.type() != rhs.type():
             super().error(ErrorType.TYPE_ERROR, f"Incompatible types for {oper} operation")
 
         op_func = Operator.OP_TO_LAMBDA.get(lhs.type(), {}).get(oper)
-        if not op_func:
-            super().error(ErrorType.TYPE_ERROR, f"Incompatible operator {oper} for type {lhs.type()}")
+        if op_func is None:
+            super().error(ErrorType.TYPE_ERROR, f"Incompatible operator {oper} for type '{lhs.type()}'")
         return op_func(lhs, rhs)
 
     def __call_print(self, fcall_node: Element) -> Value:

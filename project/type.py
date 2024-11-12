@@ -70,6 +70,7 @@ def try_conversion(old: Value, new: Value) -> tuple[Value, Value]:
 def coercion_by_priority(lhs: Value, rhs: Value) -> tuple[Value, Value]:
     lhs_priority = COERCION_PRIORITY.get(lhs.type(), 10)
     rhs_priority = COERCION_PRIORITY.get(rhs.type(), 10)
+
     if lhs_priority > rhs_priority:
         return try_conversion(rhs, lhs)
     elif lhs_priority < rhs_priority:
@@ -77,22 +78,10 @@ def coercion_by_priority(lhs: Value, rhs: Value) -> tuple[Value, Value]:
     else:
         return lhs, rhs
 
-def normalize_struct(val: Value):
+def normalize_struct(val: Value) -> Value:
     """ If a struct is not initialized (value is None), then return NIL Value """
     return Value(BasicType.NIL, None) \
         if isinstance(val.type(), StructType) and val.value() is None else val
-
-def create_value(val) -> Value:
-    if val == InterpreterBase.TRUE_DEF:
-        return Value(BasicType.BOOL, True)
-    elif val == InterpreterBase.FALSE_DEF:
-        return Value(BasicType.BOOL, False)
-    elif isinstance(val, str):
-        return Value(BasicType.STRING, val)
-    elif isinstance(val, int):
-        return Value(BasicType.INT, val)
-    else:
-        raise ValueError("Unknown value type")
 
 def get_default_value(t: Type) -> Value | None:
     match t:
@@ -123,6 +112,18 @@ def get_printable(val: Value) -> str:
         return "nil"
     raise ValueError(f"Not printable type {t}")
 
+def create_value(val) -> Value:
+    if val == InterpreterBase.TRUE_DEF:
+        return Value(BasicType.BOOL, True)
+    elif val == InterpreterBase.FALSE_DEF:
+        return Value(BasicType.BOOL, False)
+    elif isinstance(val, str):
+        return Value(BasicType.STRING, val)
+    elif isinstance(val, int):
+        return Value(BasicType.INT, val)
+    else:
+        raise ValueError("Unknown value type")
+
 class Statement:
     VAR_DEF = "vardef"
     ASSIGNMENT = "="
@@ -139,12 +140,12 @@ class Operator:
 
     OP_TO_LAMBDA = {
         BasicType.INT: {
+            "==": lambda x, y: Value(BasicType.BOOL, x.type() == y.type() and x.value() == y.value()),
+            "!=": lambda x, y: Value(BasicType.BOOL, x.type() != y.type() or x.value() != y.value()),
             "+": lambda x, y: Value(BasicType.INT, x.value() + y.value()),
             "-": lambda x, y: Value(BasicType.INT, x.value() - y.value()),
             "*": lambda x, y: Value(BasicType.INT, x.value() * y.value()),
             "/": lambda x, y: Value(BasicType.INT, x.value() // y.value()),
-            "==": lambda x, y: Value(BasicType.BOOL, x.type() == y.type() and x.value() == y.value()),
-            "!=": lambda x, y: Value(BasicType.BOOL, x.type() != y.type() or x.value() != y.value()),
             ">=": lambda x, y: Value(BasicType.BOOL, x.value() >= y.value()),
             "<=": lambda x, y: Value(BasicType.BOOL, x.value() <= y.value()),
             ">": lambda x, y: Value(BasicType.BOOL, x.value() > y.value()),
@@ -159,9 +160,9 @@ class Operator:
             "!": lambda x: Value(BasicType.BOOL, not x.value()),
         },
         BasicType.STRING: {
-            "+": lambda x, y: Value(BasicType.STRING, x.value() + y.value()),
             "==": lambda x, y: Value(BasicType.BOOL, x.value() == y.value()),
             "!=": lambda x, y: Value(BasicType.BOOL, x.value() != y.value()),
+            "+": lambda x, y: Value(BasicType.STRING, x.value() + y.value()),
         },
         BasicType.NIL: {
             "==": lambda x, y: Value(BasicType.BOOL, x.type() == y.type() and x.value() == y.value()),
@@ -169,9 +170,11 @@ class Operator:
         },
         StructType.STRUCT: {
             "==": lambda x, y: Value(BasicType.BOOL,
-                x.type() == y.type() and id(x.value()) == id(y.value()) if isinstance(y.type(), StructType) else x.value() == y.value()),
+                x.type() == y.type() and id(x.value()) == id(y.value())
+                if isinstance(y.type(), StructType) else x.value() == y.value()),
             "!=": lambda x, y: Value(BasicType.BOOL,
-                x.type() != y.type() or id(x.value()) != id(y.value()) if isinstance(y.type(), StructType) else x.value() != y.value()),
+                x.type() != y.type() or id(x.value()) != id(y.value())
+                if isinstance(y.type(), StructType) else x.value() != y.value()),
         }
     }
 
