@@ -122,16 +122,14 @@ class Interpreter(InterpreterBase):
         if isinstance(var_def, ErrorType):
             super().error(var_def, f"Variable '{var_name}' not found")
 
-        var_type, value_type = var_def.type(), value.type()
-        if var_type != value_type:
-            result = try_conversion(value, var_type)
-            if result is None:
-                super().error(ErrorType.TYPE_ERROR, f"Cannot assign '{value_type}' to variable '{var_name}'")
+        value, var_def = try_conversion(value, var_def)
+        if var_def.type() != value.type():
+            super().error(ErrorType.TYPE_ERROR, f"Cannot assign '{value.type()}' to variable '{var_name}'")
 
         res = self.env.assign(var_name, value)
 
         if isinstance(res, ErrorType):
-            super().error(res, f"Cannot assign '{value_type}' to variable '{var_name}'")
+            super().error(res, f"Cannot assign '{value.type()}' to variable '{var_name}'")
 
     def __call_func(self, fcall_node: Element) -> Value:
         func_name = fcall_node.get("name")
@@ -153,10 +151,11 @@ class Interpreter(InterpreterBase):
                 self.env.push_env() # new environment for function call
 
                 # map arguments to parameters and add to environment
-                for (param_name,param_value), arg_value in zip(params.items(), arg_values):
+                for (param_name,param_type), arg_value in zip(params.items(), arg_values):
+                    param_value = get_default_value(param_type)
                     if param_value != arg_value.type():
-                        arg_value = try_conversion(arg_value, param_value)
-                        if arg_value is None:
+                        param_value, arg_value = try_conversion(param_value, arg_value)
+                        if param_value.type() != arg_value.type():
                             super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' expects '{param_value}' for '{param_name}'")
                     self.env.create(param_name, arg_value)
 
@@ -170,20 +169,19 @@ class Interpreter(InterpreterBase):
                 return_type = self.__get_type(func_node.get("return_type"))
                 # no need to check invalid return type since it's already checked in __set_function_table
 
-                if return_type != result.type():
-                    if return_type == BasicType.VOID and result.type() == BasicType.NIL:
-                        return Value(BasicType.VOID, None)
-                    result = try_conversion(result, return_type)
-                    if result is None:
-                        super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' must return '{return_type}'")
+                if return_type == BasicType.VOID and result.type() == BasicType.NIL:
+                    return Value(BasicType.VOID, None)
+                result, _ = try_conversion(result, get_default_value(return_type))
+                if result.type() != return_type:
+                    super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' must return '{return_type}'")
 
                 return result
 
     def __call_if(self, if_node: Element) -> tuple[Value, ExecStatus]:
         condition = self.__eval_expr(if_node.get("condition"))
-        if condition.type() != BasicType.BOOL:
-            condition = try_conversion(condition, BasicType.BOOL)
-            if condition is None:
+        if condition.type() != BasicType(BasicType.BOOL):
+            condition, _ = try_conversion(condition, create_value("true"))
+            if condition.type() != BasicType(BasicType.BOOL):
                 super().error(ErrorType.TYPE_ERROR, "If condition must be a boolean")
 
         self.env.push_block() # new child scope for if statement body
@@ -214,8 +212,8 @@ class Interpreter(InterpreterBase):
         while True:
             condition_result = self.__eval_expr(condition)
             if condition_result.type() != BasicType(BasicType.BOOL):
-                condition_result = try_conversion(condition_result, BasicType.BOOL)
-                if condition_result is None:
+                condition_result, _ = try_conversion(condition_result, create_value("true"))
+                if condition_result.type() != BasicType(BasicType.BOOL):
                     super().error(ErrorType.TYPE_ERROR, "For loop condition must be a boolean")
             if condition_result.value() is False: break
 

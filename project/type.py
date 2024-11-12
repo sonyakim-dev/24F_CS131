@@ -57,20 +57,22 @@ COERCION = {
     },
 }
 
+def try_conversion(old: Value, new: Value) -> tuple[Value, Value]:
+    # NIL to STRUCT; in case assigning nil to struct type var (e.g. var s: struct; s = nil;)
+    if old.type() == BasicType.NIL and isinstance(new.type(), StructType):
+        return Value(new.type(), None), new
+    if isinstance(old.type(), StructType) and new.type() == BasicType.NIL:
+        return old, Value(old.type(), None)
 
-def try_conversion(v: Value, t: Type) -> Value | None:
-    if v.type() == t:
-        return v
-    # if isinstance(t, StructType):
-    #     return normalize_struct(v)
-    if isinstance(t, StructType) and v.type() == BasicType.NIL:
-        return Value(t, None)
-    if v.type() in COERCION and t in COERCION[v.type()]:
-        return COERCION[v.type()][t](v)
-    return None
+    # basic type coercion
+    if isinstance(old.type(), BasicType) and isinstance(new.type(), BasicType)\
+            and old.type() in COERCION and new.type() in COERCION[old.type()]:
+        return COERCION[old.type()][new.type()](old), old
+
+    return old, new
 
 def normalize_struct(val: Value):
-    """ If a struct is not initialized (contains None Value), then treat it as Nil Value """
+    """ If a struct is not initialized (value is None), then treat it as Nil Value """
     return Value(BasicType.NIL, None) \
         if isinstance(val.type(), StructType) and val.value() is None else val
 
