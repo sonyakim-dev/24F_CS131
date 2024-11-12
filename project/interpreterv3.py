@@ -155,7 +155,8 @@ class Interpreter(InterpreterBase):
                     if param_value != arg_value.type():
                         arg_value, param_value = try_conversion(arg_value, param_value)
                         if param_value.type() != arg_value.type():
-                            super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' expects '{param_value}' for '{param_name}'")
+                            super().error(ErrorType.TYPE_ERROR,
+                                          f"Function '{func_name}' expects type '{param_value.type()}' for '{param_name}'")
                     self.env.create(param_name, arg_value)
 
                 if self.trace_output: self.env._print(func_name) # debug
@@ -280,15 +281,21 @@ class Interpreter(InterpreterBase):
     def __eval_op(self, expr_node: Element) -> Value:
         oper = expr_node.elem_type
         lhs, rhs = self.__eval_expr(expr_node.get("op1")), self.__eval_expr(expr_node.get("op2"))
-        lhs, rhs = try_conversion(lhs, rhs)
 
         # handle equality operators for struct types
-        if oper in Operator.EQ_OPS:
+        if isinstance(lhs.type(), StructType) or isinstance(rhs.type(), StructType):
+            if oper not in Operator.EQ_OPS:
+                super().error(ErrorType.TYPE_ERROR, f"Incompatible operator '{oper}' for struct types")
+
+            lhs, rhs = try_conversion(lhs, rhs)
             lhs, rhs = normalize_struct(lhs), normalize_struct(rhs) # normalize None value structs to NIL value
-            if isinstance(lhs.type(), StructType):
+            if isinstance(lhs.type(), StructType) or isinstance(rhs.type(), StructType):
                 return Operator.OP_TO_LAMBDA[StructType.STRUCT][oper](lhs, rhs)
-            elif isinstance(rhs.type(), StructType):
-                return Operator.OP_TO_LAMBDA[StructType.STRUCT][oper](rhs, lhs)
+
+            if lhs.type() != rhs.type(): # in case comparing struct with non-struct or non-nil type
+                super().error(ErrorType.TYPE_ERROR, f"Incompatible types for {oper} operation")
+
+        lhs, rhs = coercion_by_priority(lhs, rhs)
 
         # for base type, types must match except for equality operators
         if lhs.type() != rhs.type() and oper not in Operator.EQ_OPS:

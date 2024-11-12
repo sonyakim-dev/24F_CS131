@@ -67,8 +67,18 @@ def try_conversion(old: Value, new: Value) -> tuple[Value, Value]:
 
     return old, new
 
+def coercion_by_priority(lhs: Value, rhs: Value) -> tuple[Value, Value]:
+    lhs_priority = COERCION_PRIORITY.get(lhs.type(), 10)
+    rhs_priority = COERCION_PRIORITY.get(rhs.type(), 10)
+    if lhs_priority > rhs_priority:
+        return try_conversion(rhs, lhs)
+    elif lhs_priority < rhs_priority:
+        return try_conversion(lhs, rhs)
+    else:
+        return lhs, rhs
+
 def normalize_struct(val: Value):
-    """ If a struct is not initialized (value is None), then treat it as Nil Value """
+    """ If a struct is not initialized (value is None), then return NIL Value """
     return Value(BasicType.NIL, None) \
         if isinstance(val.type(), StructType) and val.value() is None else val
 
@@ -159,9 +169,9 @@ class Operator:
         },
         StructType.STRUCT: {
             "==": lambda x, y: Value(BasicType.BOOL,
-                id(x.value()) == id(y.value()) if isinstance(y.type(), StructType) else x.value() == y.value()),
+                x.type() == y.type() and id(x.value()) == id(y.value()) if isinstance(y.type(), StructType) else x.value() == y.value()),
             "!=": lambda x, y: Value(BasicType.BOOL,
-                id(x.value()) != id(y.value()) if isinstance(y.type(), StructType) else x.value() != y.value()),
+                x.type() != y.type() or id(x.value()) != id(y.value()) if isinstance(y.type(), StructType) else x.value() != y.value()),
         }
     }
 
