@@ -1,4 +1,3 @@
-from functools import reduce
 from brewparse import parse_program
 from element import Element
 from env import EnvironmentManager
@@ -10,7 +9,7 @@ class Interpreter(InterpreterBase):
         super().__init__(console_output, inp)
         self.trace_output = trace_output # debug purpose
         self.env = EnvironmentManager() # store variables
-        self.func_table: dict[tuple[str, int], Element] = {} # key: (func name, arg count)
+        self.func_table: dict[tuple[str, int], Element] = {} # {(func_name, arg_count): func_node}
         self.struct_table: dict[str, dict[str, Value]] = {} # {struct_name: {field_name: Value}}
 
     def run(self, program) -> None:
@@ -26,10 +25,11 @@ class Interpreter(InterpreterBase):
             params = func_node.get("args")
             return_type = func_node.get("return_type")
 
-            if func_name in self.func_table:
+            if func_name in self.func_table: # check duplicated function
                 super().error(ErrorType.NAME_ERROR, f"Function '{func_name}' defined more than once")
             if return_type not in FuncType and return_type not in self.struct_table: # check return type
                 super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' has invalid return type '{return_type}'")
+
             for param in params: # check param types
                 param_type = param.get("var_type")
                 if param_type not in VarType and param_type not in self.struct_table:
@@ -51,7 +51,8 @@ class Interpreter(InterpreterBase):
                 var_type = self.__get_type(field_node.get("var_type"))
 
                 if isinstance(var_type, ErrorType):
-                    super().error(ErrorType.TYPE_ERROR, f"'{field_name}' in '{struct_name}' has invalid type '{var_type}'")
+                    super().error(ErrorType.TYPE_ERROR,
+                                  f"'Struct '{struct_name}' has invalid type '{field_node.get('var_type')}' for '{field_name}'")
 
                 fields[field_name] = get_default_value(var_type)
 
@@ -66,8 +67,9 @@ class Interpreter(InterpreterBase):
             return ErrorType.TYPE_ERROR
 
     def __get_func_by_name(self, func_key: tuple[str, int]) -> Element:
+        func_name, arg_count = func_key
         if func_key not in self.func_table:
-            super().error(ErrorType.NAME_ERROR, f"Function '{func_key[0]}' not found")
+            super().error(ErrorType.NAME_ERROR, f"Function '{func_name}' with {arg_count} params not found")
 
         return self.func_table[func_key]
 
@@ -94,7 +96,7 @@ class Interpreter(InterpreterBase):
                 case Statement.RETURN: # return immediately
                     return self.__call_return(statement)
                 case _:
-                    super().error(ErrorType.TYPE_ERROR, f"Unknown statement type: {category}")
+                    super().error(ErrorType.TYPE_ERROR, f"Statement '{category}' is unknown")
 
             if self.trace_output: self.env._print(category)
 
@@ -105,12 +107,12 @@ class Interpreter(InterpreterBase):
         var_type = self.__get_type(vardef_node.get("var_type"))
 
         if isinstance(var_type, ErrorType):
-            super().error(ErrorType.TYPE_ERROR, f"Invalid type {vardef_node.get('var_type')} for variable {var_name}")
+            super().error(ErrorType.TYPE_ERROR, f"Variable '{var_name}' has invalid type '{vardef_node.get('var_type')}'")
 
         var_value = get_default_value(var_type)
 
         if not self.env.create(var_name, var_value):
-            super().error(ErrorType.NAME_ERROR, f"Variable {var_name} has already been defined")
+            super().error(ErrorType.NAME_ERROR, f"Variable '{var_name}' defined more than once")
 
     def __assign(self, assign_node: Element) -> None:
         var_name = assign_node.get("name")
@@ -138,10 +140,8 @@ class Interpreter(InterpreterBase):
                 return self.__call_input(fcall_node)
             case _: # user-defined function
                 func_hash = (func_name, len(fcall_node.get("args")))
-                if func_hash not in self.func_table:
-                    super().error(ErrorType.NAME_ERROR, f"Function '{func_name}' not found")
+                func_node = self.__get_func_by_name(func_hash)
 
-                func_node = self.func_table[func_hash]
                 params = {arg_node.get("name"): self.__get_type(arg_node.get("var_type")) for arg_node in func_node.get("args")}
                 # no need to check invalid parameter type since it's already checked in __set_function_table
                 arg_values = [self.__eval_expr(arg) for arg in fcall_node.get("args")]
@@ -156,7 +156,7 @@ class Interpreter(InterpreterBase):
                         arg_value, param_value = try_conversion(arg_value, param_value)
                         if param_value.type() != arg_value.type():
                             super().error(ErrorType.TYPE_ERROR,
-                                          f"Function '{func_name}' expects type '{param_value.type()}' for '{param_name}'")
+                                          f"Function '{func_name}' expects '{param_value.type()}' type for '{param_name}'")
                     self.env.create(param_name, arg_value)
 
                 if self.trace_output: self.env._print(func_name) # debug
@@ -176,16 +176,16 @@ class Interpreter(InterpreterBase):
 
                 result, _ = try_conversion(result, return_value)
                 if result.type() != return_type:
-                    super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' must return '{return_type}'")
+                    super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' must return '{return_type}' type")
 
                 return result
 
     def __call_if(self, if_node: Element) -> tuple[Value, ExecStatus]:
         condition = self.__eval_expr(if_node.get("condition"))
-        if condition.type() != BasicType(BasicType.BOOL):
+        if condition.type() != BasicType.BOOL:
             condition, _ = try_conversion(condition, create_value("true"))
-            if condition.type() != BasicType(BasicType.BOOL):
-                super().error(ErrorType.TYPE_ERROR, "If condition must be a boolean")
+            if condition.type() != BasicType.BOOL:
+                super().error(ErrorType.TYPE_ERROR, "'if' condition must be a boolean")
 
         self.env.push_block() # new child scope for if statement body
 
@@ -205,19 +205,19 @@ class Interpreter(InterpreterBase):
         update: Element = for_node.get("update")
 
         if init.elem_type != Statement.ASSIGNMENT:
-            super().error(ErrorType.TYPE_ERROR, "For loop initialization must be a variable declaration")
+            super().error(ErrorType.TYPE_ERROR, "'for' loop initialization must be a variable declaration")
         if update.elem_type != Statement.ASSIGNMENT:
-            super().error(ErrorType.TYPE_ERROR, "For loop update must be an assignment")
+            super().error(ErrorType.TYPE_ERROR, "'for' loop update must be an assignment")
 
         self.__assign(init)
         result, ret = Value(BasicType.VOID, None), ExecStatus.CONTINUE
 
         while True:
             condition_result = self.__eval_expr(condition)
-            if condition_result.type() != BasicType(BasicType.BOOL):
+            if condition_result.type() != BasicType.BOOL:
                 condition_result, _ = try_conversion(condition_result, create_value("true"))
-                if condition_result.type() != BasicType(BasicType.BOOL):
-                    super().error(ErrorType.TYPE_ERROR, "For loop condition must be a boolean")
+                if condition_result.type() != BasicType.BOOL:
+                    super().error(ErrorType.TYPE_ERROR, "'for' loop condition must be a boolean")
             if condition_result.value() is False: break
 
             self.env.push_block() # new child scope for for loop body
@@ -257,7 +257,7 @@ class Interpreter(InterpreterBase):
         if expr == Statement.NEW:
             return self.__new_struct(expr_node)
 
-        super().error(ErrorType.TYPE_ERROR, f"Unknown operand type: {expr}")
+        super().error(ErrorType.TYPE_ERROR, f"Operand '{expr}' is unknown")
 
     def __new_struct(self, expr_node: Element) -> Value:
         struct_name = expr_node.get("var_type")
@@ -284,7 +284,10 @@ class Interpreter(InterpreterBase):
         lhs, rhs = self.__eval_expr(expr_node.get("op1")), self.__eval_expr(expr_node.get("op2"))
 
         # handle equality operators for struct types
+        # NOTE: You will never be asked to compare two struct types that are currently nil, and may have undefined behavior in this case.
         if isinstance(lhs.type(), StructType) or isinstance(rhs.type(), StructType):
+            if isinstance(lhs.type(), StructType) and isinstance(rhs.type(), StructType) and lhs.type() != rhs.type():
+                super().error(ErrorType.TYPE_ERROR, f"Incompatible types for '{oper}' operation")
             lhs, rhs = try_conversion(lhs, rhs)
             lhs, rhs = normalize_struct(lhs), normalize_struct(rhs) # normalize None value structs to NIL value
             if isinstance(lhs.type(), StructType) or isinstance(rhs.type(), StructType):
@@ -301,19 +304,25 @@ class Interpreter(InterpreterBase):
 
         op_func = Operator.OP_TO_LAMBDA.get(lhs.type(), {}).get(oper)
         if op_func is None:
-            super().error(ErrorType.TYPE_ERROR, f"Incompatible operator {oper} for type '{lhs.type()}'")
+            super().error(ErrorType.TYPE_ERROR, f"Incompatible types for '{oper}' operation")
         return op_func(lhs, rhs)
 
     def __call_print(self, fcall_node: Element) -> Value:
         args = fcall_node.get("args")
-        s = reduce(lambda acc, arg: acc + get_printable(self.__eval_expr(arg)), args, "")
+        s = ""
+        for arg in args:
+            printable = get_printable(self.__eval_expr(arg))
+            if printable is None:
+                super().error(ErrorType.TYPE_ERROR, "Non-printable type for print()")
+            s += printable
         super().output(s)
+
         return Value(BasicType.VOID, None)
 
     def __call_input(self, fcall_node: Element) -> Value:
         args = fcall_node.get("args")
         if len(args) > 1:
-            super().error(ErrorType.NAME_ERROR, "inputi() function that takes > 1 parameter")
+            super().error(ErrorType.NAME_ERROR, "inputi() function can take only one parameter")
 
         if args:
             prompt = get_printable(self.__eval_expr(args[0]))

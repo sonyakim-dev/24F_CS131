@@ -20,10 +20,12 @@ class StructType:
     STRUCT = "struct"
     def __init__(self, name):
         self.name = name
-    def __eq__(self, other):  # struct comparison
+    def __eq__(self, other):  # struct comparison (can be used to for both equality and inequality)
         if isinstance(other, StructType):
             return self.name == other.name
         return False
+    def __hash__(self):
+        return hash("struct")
     def __str__(self):  # debug print
         return self.name
 
@@ -48,7 +50,7 @@ COERCION = {
         BasicType.BOOL: lambda x: Value(BasicType.BOOL, x.value() != 0),
     },
 }
-COERCION_PRIORITY = {
+COERCION_PRIORITY = { # e.g. 1 == true: 1 is converted to bool, not vice versa
     BasicType.INT: 1,
     BasicType.BOOL: 2
 }
@@ -100,7 +102,7 @@ def get_default_value(t: Type) -> Value | None:
                 return Value(t, None)
             return None
 
-def get_printable(val: Value) -> str:
+def get_printable(val: Value) -> str|None:
     t = val.type()
     if t == BasicType.INT:
         return str(val.value())
@@ -110,7 +112,7 @@ def get_printable(val: Value) -> str:
         return "true" if val.value() else "false"
     if isinstance(t, StructType) and val.value() is None:
         return "nil"
-    raise ValueError(f"Not printable type {t}")
+    return None
 
 def create_value(val) -> Value:
     if val == InterpreterBase.TRUE_DEF:
