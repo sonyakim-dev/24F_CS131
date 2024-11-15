@@ -1,7 +1,7 @@
 from brewparse import parse_program
 from element import Element
 from env import EnvironmentManager
-from intbase import ErrorType
+from intbase import InterpreterBase, ErrorType
 from type import *
 
 class Interpreter(InterpreterBase):
@@ -33,33 +33,37 @@ class Interpreter(InterpreterBase):
             for param in params: # check param types
                 param_type = param.get("var_type")
                 if param_type not in VarType and param_type not in self.struct_table:
-                    super().error(ErrorType.TYPE_ERROR, f"Function '{func_name}' has invalid parameter type '{param_type}'")
+                    super().error(ErrorType.TYPE_ERROR,
+                                  f"Function '{func_name}' has invalid parameter type '{param_type}' for '{param.get('name')}'")
 
             self.func_table[(func_name, len(func_node.get("args")))] = func_node
 
     def __set_struct_table(self, struct_nodes: list[Element]) -> None:
         for struct_node in struct_nodes:
             struct_name = struct_node.get("name")
+
+            if BasicType.contains(struct_name):
+                super().error(ErrorType.NAME_ERROR, f"Struct '{struct_name}' is invalid name")
             if struct_name in self.struct_table:
                 super().error(ErrorType.NAME_ERROR, f"Struct '{struct_name}' defined more than once")
 
-            self.struct_table[struct_name] = {} # in case a field type references itself (ex. List{next:List})
+            self.struct_table[struct_name] = {} # hold namespace in case a field type references itself (ex. List{next:List})
 
             fields = {}
             for field_node in struct_node.get("fields"):
                 field_name = field_node.get("name")
                 var_type = self.__get_type(field_node.get("var_type"))
 
-                if isinstance(var_type, ErrorType):
-                    super().error(ErrorType.TYPE_ERROR,
-                                  f"'Struct '{struct_name}' has invalid type '{field_node.get('var_type')}' for '{field_name}'")
+                if isinstance(var_type, ErrorType): # or var_type in [BasicType.NIL, BasicType.VOID] ?
+                    super().error(var_type,
+                                  f"Struct '{struct_name}' has invalid type '{field_node.get('var_type')}' for '{field_name}'")
 
-                fields[field_name] = get_default_value(var_type)
+                fields[field_name] = create_value(var_type)
 
             self.struct_table[struct_name] = fields
 
     def __get_type(self, var_type: str) -> Type|ErrorType:
-        if BasicType.contains(var_type): # python 3.11 does not support 'in' operator for enum class
+        if BasicType.contains(var_type):
             return BasicType(var_type)
         elif var_type in self.struct_table:
             return StructType(var_type)
@@ -100,16 +104,16 @@ class Interpreter(InterpreterBase):
 
             if self.trace_output: self.env._print(category)
 
-        return Value(BasicType.VOID, None), ExecStatus.CONTINUE
+        return create_value(BasicType.VOID), ExecStatus.CONTINUE
 
     def __var_def(self, vardef_node: Element) -> None:
         var_name = vardef_node.get("name")
         var_type = self.__get_type(vardef_node.get("var_type"))
 
         if isinstance(var_type, ErrorType):
-            super().error(ErrorType.TYPE_ERROR, f"Variable '{var_name}' has invalid type '{vardef_node.get('var_type')}'")
+            super().error(var_type, f"Variable '{var_name}' has invalid type '{vardef_node.get('var_type')}'")
 
-        var_value = get_default_value(var_type)
+        var_value = create_value(var_type)
 
         if not self.env.create(var_name, var_value):
             super().error(ErrorType.NAME_ERROR, f"Variable '{var_name}' defined more than once")
@@ -142,16 +146,15 @@ class Interpreter(InterpreterBase):
                 func_hash = (func_name, len(fcall_node.get("args")))
                 func_node = self.__get_func_by_name(func_hash)
 
-                params = {arg_node.get("name"): self.__get_type(arg_node.get("var_type")) for arg_node in func_node.get("args")}
                 # no need to check invalid parameter type since it's already checked in __set_function_table
+                params = {arg_node.get("name"): self.__get_type(arg_node.get("var_type")) for arg_node in func_node.get("args")}
                 arg_values = [self.__eval_expr(arg) for arg in fcall_node.get("args")]
 
                 self.env.push_env() # new environment for function call
 
                 # map arguments to parameters and add to environment
                 for (param_name,param_type), arg_value in zip(params.items(), arg_values):
-                    param_value = get_default_value(param_type)
-                    # print("!", param_type, )
+                    param_value = create_value(param_type)
                     if param_value != arg_value.type():
                         arg_value, param_value = try_conversion(arg_value, param_value)
                         if param_value.type() != arg_value.type():
@@ -167,7 +170,7 @@ class Interpreter(InterpreterBase):
                 self.env.pop_env()
 
                 return_type = self.__get_type(func_node.get("return_type"))
-                return_value = get_default_value(return_type)
+                return_value = create_value(return_type)
                 # no need to check invalid return type since it's already checked in __set_function_table
 
                 # if function has no return statement or simply return without value, return default value
@@ -183,13 +186,13 @@ class Interpreter(InterpreterBase):
     def __call_if(self, if_node: Element) -> tuple[Value, ExecStatus]:
         condition = self.__eval_expr(if_node.get("condition"))
         if condition.type() != BasicType.BOOL:
-            condition, _ = try_conversion(condition, create_value("true"))
+            condition, _ = try_conversion(condition, create_value(BasicType.BOOL))
             if condition.type() != BasicType.BOOL:
                 super().error(ErrorType.TYPE_ERROR, "'if' condition must be a boolean")
 
         self.env.push_block() # new child scope for if statement body
 
-        result, ret = Value(BasicType.VOID, None), ExecStatus.CONTINUE
+        result, ret = create_value(BasicType.VOID), ExecStatus.CONTINUE
         if condition.value():
             result, ret = self.__run_statements(if_node.get("statements"))
         elif if_node.get("else_statements"):
@@ -210,12 +213,12 @@ class Interpreter(InterpreterBase):
             super().error(ErrorType.TYPE_ERROR, "'for' loop update must be an assignment")
 
         self.__assign(init)
-        result, ret = Value(BasicType.VOID, None), ExecStatus.CONTINUE
+        result, ret = create_value(BasicType.VOID), ExecStatus.CONTINUE
 
         while True:
             condition_result = self.__eval_expr(condition)
             if condition_result.type() != BasicType.BOOL:
-                condition_result, _ = try_conversion(condition_result, create_value("true"))
+                condition_result, _ = try_conversion(condition_result, create_value(BasicType.BOOL))
                 if condition_result.type() != BasicType.BOOL:
                     super().error(ErrorType.TYPE_ERROR, "'for' loop condition must be a boolean")
             if condition_result.value() is False: break
@@ -230,7 +233,7 @@ class Interpreter(InterpreterBase):
         return result, ret
 
     def __call_return(self, return_node: Element) -> tuple[Value, ExecStatus]:
-        result = Value(BasicType.VOID, None) # void return
+        result = create_value(BasicType.VOID) # default is void return
         if return_node.get("expression"):
             result = self.__eval_expr(return_node.get("expression"))
 
@@ -239,9 +242,9 @@ class Interpreter(InterpreterBase):
     def __eval_expr(self, expr_node: Element) -> Value:
         expr = expr_node.elem_type
         if expr in VarType:
-            return Value(BasicType(expr), expr_node.get("val"))
-        if expr == BasicType.NIL.value:
-            return Value(BasicType(expr), None)
+            return create_value(BasicType(expr), expr_node.get("val"))
+        if expr == BasicType.NIL.value: # nil does not have expr_node.get("val")
+            return create_value(BasicType.NIL)
         if expr == "var": # can be struct type
             var_name = expr_node.get("name")
             val = self.env.get(var_name)
@@ -263,40 +266,40 @@ class Interpreter(InterpreterBase):
         struct_name = expr_node.get("var_type")
 
         if struct_name not in self.struct_table:
-            super().error(ErrorType.NAME_ERROR, f"Struct '{struct_name}' not found")
+            super().error(ErrorType.TYPE_ERROR, f"Struct '{struct_name}' not found")
 
         struct_fields = self.struct_table[struct_name]
         value = { field: value for field, value in struct_fields.items() }
 
-        return Value(StructType(struct_name), value)
-
-    def __eval_unary_op(self, expr_node: Element) -> Value: # neg for INT, ! for BOOL
-        op = self.__eval_expr(expr_node.get("op1"))
-        op, _ = try_conversion(op, create_value("true") if expr_node.elem_type == "!" else create_value(0))
-
-        try:
-            return Operator.OP_TO_LAMBDA[op.type()][expr_node.elem_type](op)
-        except KeyError:
-            super().error(ErrorType.TYPE_ERROR, f"Incompatible operator '{expr_node.elem_type}' for type '{op.type()}'")
+        return create_value(StructType(struct_name), value)
 
     def __eval_op(self, expr_node: Element) -> Value:
         oper = expr_node.elem_type
         lhs, rhs = self.__eval_expr(expr_node.get("op1")), self.__eval_expr(expr_node.get("op2"))
 
         # handle equality operators for struct types
-        # NOTE: You will never be asked to compare two struct types that are currently nil, and may have undefined behavior in this case.
-        if isinstance(lhs.type(), StructType) or isinstance(rhs.type(), StructType):
-            if isinstance(lhs.type(), StructType) and isinstance(rhs.type(), StructType) and lhs.type() != rhs.type():
-                super().error(ErrorType.TYPE_ERROR, f"Incompatible types for '{oper}' operation")
-            lhs, rhs = try_conversion(lhs, rhs)
-            lhs, rhs = normalize_struct(lhs), normalize_struct(rhs) # normalize None value structs to NIL value
+        if oper in Operator.EQ_OPS:
             if isinstance(lhs.type(), StructType) or isinstance(rhs.type(), StructType):
-                return Operator.OP_TO_LAMBDA[StructType.STRUCT][oper](lhs, rhs)
+                if isinstance(lhs.type(), StructType) and isinstance(rhs.type(), StructType) and lhs.type() != rhs.type():
+                    super().error(ErrorType.TYPE_ERROR, f"Incompatible types for '{oper}' operation")
 
-            if lhs.type() != rhs.type(): # in case comparing struct with non-struct or non-nil type
-                super().error(ErrorType.TYPE_ERROR, f"Incompatible types for {oper} operation")
+                lhs, rhs = normalize_struct(lhs), normalize_struct(rhs) # normalize None value structs to NIL value
+                if isinstance(lhs.type(), StructType) or isinstance(rhs.type(), StructType):
+                    return Operator.OP_TO_LAMBDA[StructType.STRUCT][oper](lhs, rhs)
+                if lhs.type() != rhs.type(): # in case comparing struct with non-struct or non-nil type
+                    super().error(ErrorType.TYPE_ERROR, f"Incompatible types for {oper} operation")
 
-        lhs, rhs = coercion_by_priority(lhs, rhs)
+            else: # basic types coercion
+                lhs, rhs = coercion_by_priority(lhs, rhs)
+
+        elif oper in Operator.LOG_OPS:
+            lhs, _ = try_conversion(lhs, create_value(BasicType.BOOL)) # convert to boolean
+            rhs, _ = try_conversion(rhs, create_value(BasicType.BOOL))
+            if lhs.type() != rhs.type():
+                super().error(ErrorType.TYPE_ERROR, f"Incompatible types for '{oper}' operation")
+
+        else:
+            lhs, rhs = coercion_by_priority(lhs, rhs)
 
         # types must match except for equality operators
         if lhs.type() != rhs.type():
@@ -306,6 +309,15 @@ class Interpreter(InterpreterBase):
         if op_func is None:
             super().error(ErrorType.TYPE_ERROR, f"Incompatible types for '{oper}' operation")
         return op_func(lhs, rhs)
+
+    def __eval_unary_op(self, expr_node: Element) -> Value: # neg for INT, ! for BOOL
+        op = self.__eval_expr(expr_node.get("op1"))
+        op, _ = try_conversion(op, create_value(BasicType.BOOL) if expr_node.elem_type == "!" else create_value(BasicType.INT))
+
+        op_func = Operator.OP_TO_LAMBDA.get(op.type(), {}).get(expr_node.elem_type)
+        if op_func is None:
+            super().error(ErrorType.TYPE_ERROR, f"Incompatible types for '{expr_node.elem_type}' operation")
+        return op_func(op)
 
     def __call_print(self, fcall_node: Element) -> Value:
         args = fcall_node.get("args")
@@ -317,7 +329,7 @@ class Interpreter(InterpreterBase):
             s += printable
         super().output(s)
 
-        return Value(BasicType.VOID, None)
+        return create_value(BasicType.VOID)
 
     def __call_input(self, fcall_node: Element) -> Value:
         args = fcall_node.get("args")
@@ -325,7 +337,7 @@ class Interpreter(InterpreterBase):
             super().error(ErrorType.NAME_ERROR, "inputi() function can take only one parameter")
 
         if args:
-            prompt = get_printable(self.__eval_expr(args[0]))
+            prompt = get_printable(self.__eval_expr(args[0])) # arg is always a string
             super().output(prompt)
 
         usr_input = super().get_input()
@@ -333,6 +345,6 @@ class Interpreter(InterpreterBase):
 
         match func_name:
             case "inputi":
-                return Value(BasicType.INT, int(usr_input))
+                return create_value(BasicType.INT, int(usr_input))
             case "inputs":
-                return Value(BasicType.STRING, usr_input)
+                return create_value(BasicType.STRING, usr_input)

@@ -1,6 +1,6 @@
 from enum import Enum, auto
-from typing import Union
-from intbase import InterpreterBase
+from typing import Any, Union, Optional
+
 
 class BasicType(Enum):
     INT = "int"
@@ -50,7 +50,7 @@ COERCION = {
         BasicType.BOOL: lambda x: Value(BasicType.BOOL, x.value() != 0),
     },
 }
-COERCION_PRIORITY = { # e.g. 1 == true: 1 is converted to bool, not vice versa
+COERCION_PRIORITY = { # e.g. 1 == true; 1 is converted to bool, not vice versa
     BasicType.INT: 1,
     BasicType.BOOL: 2
 }
@@ -81,26 +81,25 @@ def coercion_by_priority(lhs: Value, rhs: Value) -> tuple[Value, Value]:
         return lhs, rhs
 
 def normalize_struct(val: Value) -> Value:
-    """ If a struct is not initialized (value is None), then return NIL Value """
+    """ If a struct is not initialized (value is None), then return NIL Value. """
     return Value(BasicType.NIL, None) \
         if isinstance(val.type(), StructType) and val.value() is None else val
 
-def get_default_value(t: Type) -> Value | None:
-    match t:
-        case BasicType.INT:
-            return Value(BasicType.INT, 0)
-        case BasicType.STRING:
-            return Value(BasicType.STRING, "")
-        case BasicType.BOOL:
-            return Value(BasicType.BOOL, False)
-        case BasicType.NIL:
-            return Value(BasicType.NIL, None)
-        case BasicType.VOID:
-            return Value(BasicType.VOID, None)
-        case _:
-            if isinstance(t, StructType):
-                return Value(t, None)
-            return None
+def create_value(t: Type, v: Optional[Any] = None) -> Value|None:
+    """ Return a Value object with the given Type and value. If value is not provided, then return default value. """
+    if t == BasicType.INT:
+        return Value(BasicType.INT, 0 if v is None else v)
+    if t == BasicType.STRING:
+        return Value(BasicType.STRING, "" if v is None else v)
+    if t == BasicType.BOOL:
+        return Value(BasicType.BOOL, False if v is None else v)
+    if t == BasicType.NIL:
+        return Value(BasicType.NIL, None)
+    if t == BasicType.VOID:
+        return Value(BasicType.VOID, None)
+    if isinstance(t, StructType):
+        return Value(t, None if v is None else v)
+    raise ValueError(f"Invalid type: {t}")
 
 def get_printable(val: Value) -> str|None:
     t = val.type()
@@ -114,18 +113,6 @@ def get_printable(val: Value) -> str|None:
         return "nil"
     return None
 
-def create_value(val) -> Value:
-    if val == InterpreterBase.TRUE_DEF:
-        return Value(BasicType.BOOL, True)
-    elif val == InterpreterBase.FALSE_DEF:
-        return Value(BasicType.BOOL, False)
-    elif isinstance(val, str):
-        return Value(BasicType.STRING, val)
-    elif isinstance(val, int):
-        return Value(BasicType.INT, val)
-    else:
-        raise ValueError("Unknown value type")
-
 class Statement:
     VAR_DEF = "vardef"
     ASSIGNMENT = "="
@@ -138,6 +125,8 @@ class Statement:
 class Operator:
     UNA_OPS = {"neg", "!"}
     EQ_OPS = {"==", "!="}
+    LOG_OPS = {"||", "&&"}
+    COMP_OPS = {">=", "<=", ">", "<"}
     BIN_OPS = {"+", "-", "*", "/", ">=", "<=", ">", "<", "||", "&&", "==", "!="}
 
     OP_TO_LAMBDA = {

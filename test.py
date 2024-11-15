@@ -1,33 +1,20 @@
-# class Node:
-#     def __init__(self, value: int, children=[]):
-#         self.value = value
-#         self.children = children
-      
-# def largest_val (root):
-#   if not root.children: return root.value
-#   max_subtree = max(largest_val(child) for child in root.children)
-#   return max(root.value, max_subtree)
+# read shapefile
+property_gdf = gpd.read_file('/content/drive/MyDrive/LA_City_Parcels.shp') # you need all the shapefiles(.shp, .shx, .crs, etc) in the same location
+building_gdf = gpd.read_file('/content/drive/MyDrive/LA_City_Buildings.shp')
+print(property_gdf.head())
+print(property_gdf.crs, building_gdf.crs)
 
-# def height(root):
-#   if not root.children: return 1
-#   return 1 + max(height(child) for child in root.children)
-
-
-# root = Node(1, [
-#     Node(2, [
-#         Node(4),
-#         Node(5),
-#         Node(9)
-#     ]),
-#     Node(3, [
-#         Node(6),
-#         Node(7, [
-#             Node(8)
-#         ])
-#     ])
-# ])
-
-# print(height(root))
-
-
-# divis = lambda n, m: [i for i in range(n, m+1) if i % 5 == 0 or i % 7 == 0 or i % 9 == 0]
+# convert epsg from 3857(web mapping) to 4326(latitude/longitude coordinate system)
+if property_gdf.crs != 'EPSG:4326':
+    try:
+        print("⏳ Converting property to EPSG:4326..")
+        property_gdf = property_gdf.to_crs(epsg=4326)
+        print("✅ Conversion succeed: ", property_gdf.crs)
+    except:
+        print("❌ FAILED: Converting property to EPSG:4326")
+        exit(1)
+    
+if building_gdf.crs != 'EPSG:4326':
+  print("⏳ Converting buildings to EPSG:4326..")
+  building_gdf = building_gdf.to_crs(epsg=4326)
+  print("✅ Conversion succeed: ", building_gdf.crs)
