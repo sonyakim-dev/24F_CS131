@@ -1,4 +1,4 @@
-I struggle with test_struct7 fail test case. It turned out that I was throwing NAME_ERROR instead of TYPE_ERROR.
+I struggled with test_struct7 fail test case. It turned out that I was throwing NAME_ERROR instead of TYPE_ERROR.
 
 It took me a long time to figure out the best way to implement struct type.
 If I simply put the struct name in type, then I had to check if the struct name is in the struct map every time I check the type.

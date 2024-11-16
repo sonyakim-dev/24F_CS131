@@ -23,9 +23,7 @@ class StructType:
     def __eq__(self, other):  # struct comparison (can be used to for both equality and inequality)
         if isinstance(other, StructType):
             return self.name == other.name
-        if isinstance(other, type):
-            return other == StructType
-        return False
+        return other == StructType
     def __hash__(self):
         return hash(StructType.STRUCT)
     def __str__(self):  # debug print
@@ -37,7 +35,7 @@ FuncType = {BasicType.INT.value, BasicType.BOOL.value, BasicType.STRING.value, B
 
 class Value:
     """ Represents a value, which has a type and its value. """
-    def __init__(self, type, value):
+    def __init__(self, type: Type, value: Any):
         self.t = type
         self.v = value
     @property

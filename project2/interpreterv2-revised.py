@@ -27,13 +27,6 @@ class Interpreter(InterpreterBase):
                 super().error(ErrorType.NAME_ERROR, f"Function {func_name} defined more than once")
 
             self.func_table[(func_name, len(func_node.get("args")))] = func_node
-        """NOTE:
-        Use of an invalid/undefined/missing type for a parameter or return type must result in an error of ErrorType.TYPE_ERROR.
-        This check should happen before the execution of the main function, 
-        """
-
-    def __set_struct_table(self, ast: Element) -> None:
-        pass
 
     def __get_func_by_name(self, func_key: tuple[str, int]) -> Element:
         if func_key not in self.func_table:

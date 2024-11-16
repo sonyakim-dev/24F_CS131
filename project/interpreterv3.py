@@ -287,8 +287,9 @@ class Interpreter(InterpreterBase):
                                   f"Incompatible types '{lhs.type}' and '{rhs.type}' for '{oper}' operation")
 
                 lhs, rhs = normalize_struct(lhs), normalize_struct(rhs) # normalize None value structs to NIL value
+                # return now in case comparing uninitialized struct with NIL
                 if isinstance(lhs.type, StructType) or isinstance(rhs.type, StructType):
-                    return OP_TO_LAMBDA[StructType.STRUCT][oper](lhs, rhs)
+                    return get_operator_lambda(StructType.STRUCT, oper)(lhs,rhs)
 
             else: # basic types coercion
                 lhs, rhs = coercion_by_priority(lhs, rhs)
@@ -296,9 +297,6 @@ class Interpreter(InterpreterBase):
         elif oper in LogicOps:
             lhs, _ = try_conversion(lhs, create_value(BasicType.BOOL)) # convert to boolean
             rhs, _ = try_conversion(rhs, create_value(BasicType.BOOL))
-            if lhs.type != rhs.type:
-                super().error(ErrorType.TYPE_ERROR,
-                              f"Incompatible types '{lhs.type}' and '{rhs.type}' for '{oper}' operation")
 
         else:
             lhs, rhs = coercion_by_priority(lhs, rhs)
@@ -338,7 +336,7 @@ class Interpreter(InterpreterBase):
     def __call_input(self, fcall_node: Element) -> Value:
         args = fcall_node.get("args")
         if len(args) > 1:
-            super().error(ErrorType.NAME_ERROR, "inputi() function can take only one parameter")
+            super().error(ErrorType.NAME_ERROR, "inputi() can take only one parameter")
 
         if args:
             prompt = get_printable(self.__eval_expr(args[0])) # arg is always a string

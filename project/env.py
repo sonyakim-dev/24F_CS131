@@ -1,15 +1,12 @@
 from intbase import ErrorType
 from type import *
 
-# The EnvironmentManager class keeps a mapping between each variable (aka symbol)
-# in a brewin program and the value of that variable - the value that's passed in can be
-# anything you like. In our implementation we pass in a Value object which holds a type
-# and a value (e.g., Int, 10).
 class EnvironmentManager:
+    """ The EnvironmentManager class keeps a mapping between each variable (aka symbol) in a Brewin program and the value of that variable """
     def __init__(self):
         self.environment = [[{}]] # [[{}], [{},{}], ...]
 
-    def _find_scope(self, base_field: str) -> dict | None:
+    def _find_scope(self, base_field: str) -> dict|None:
         for env in reversed(self.environment[-1]):
             if base_field in env:
                 return env
@@ -90,4 +87,4 @@ class EnvironmentManager:
             for sub_key, sub_item in item.value.items():
                 self.__print_value(sub_key, sub_item, indent + 2)
         elif isinstance(item, Value):
-            print(f"|{' ' * indent}  {key:<6}: {item.type} {str(item.value):<{max(0,12 - indent)}}|")
+            print(f"|{' ' * indent}  {key:<6}: {item.type} {str(item.value):<{max(0, 12-indent)}}|")
