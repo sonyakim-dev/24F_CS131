@@ -278,8 +278,8 @@ class Interpreter(InterpreterBase):
         oper = expr_node.elem_type
         lhs, rhs = self.__eval_expr(expr_node.get("op1")), self.__eval_expr(expr_node.get("op2"))
 
-        # handle equality operators for struct types
         if oper in EqualOps:
+            # handle equality operators for struct types
             if isinstance(lhs.type, StructType) or isinstance(rhs.type, StructType):
                 # check first if both struct types are different but uninitialized before normalization
                 if isinstance(lhs.type, StructType) and isinstance(rhs.type, StructType) and lhs.type != rhs.type:
