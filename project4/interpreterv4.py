@@ -43,8 +43,8 @@ class Interpreter(InterpreterBase):
                 case Statement.VAR_DEF:
                     self.__var_def(statement)
                 case Statement.ASSIGNMENT:
-                    self.__assign(statement)
-                case Statement.FUNC_CALL:
+                    self.__assign(statement, self.env.get_current_env())
+                case Statement.FUNC_CALL:  # standalone function call (e.g. print();)
                     result, ret = self.__call_func(statement, self.env.get_current_env())
                     if ret == ExecStatus.RAISE:
                         return result, ret
@@ -68,7 +68,7 @@ class Interpreter(InterpreterBase):
                 case Statement.RETURN:  # return immediately
                     return self.__call_return(statement, self.env.get_current_env())
                 case _:
-                    pass # lazy evaluation
+                    pass  # lazy evaluation
 
         return create_value(Type.NIL), ExecStatus.CONTINUE
 
@@ -77,29 +77,32 @@ class Interpreter(InterpreterBase):
         if not self.env.create(var_name):
             super().error(ErrorType.NAME_ERROR, f"Variable {var_name} has already been defined")
 
-    def __assign(self, assign_node: Element) -> None:
+    def __assign(self, assign_node: Element, env: list[dict]) -> None:
         var_name = assign_node.get("name")
-        closure = Closure(assign_node.get("expression"))
-        self.__capture_scope(closure, closure.expr)
-        
+        closure = self.__create_closure(assign_node.get("expression"), env)
         if not self.env.assign(var_name, closure):
             super().error(ErrorType.NAME_ERROR, f"Variable {var_name} has not been defined")
 
-    def __capture_scope(self, closure: Closure, expr_node: Element):
-        # capture variable scope for closure
+    def __create_closure(self, expr_node: Element, env: list[dict]) -> Closure:
+        closure = Closure(expr_node)
+        self.__capture_scope(closure, expr_node, env)
+        return closure
+
+    def __capture_scope(self, closure: Closure, expr_node: Element, env: list[dict]) -> None:
+        """Capture variable scope for closure within environment"""
         expr = expr_node.elem_type
         if expr == "var":
             var_name = expr_node.get("name")
-            var_val = self.env.get(var_name)
+            var_val = find_var(var_name, env)
             closure.add_scope(var_name, var_val)
         elif expr == Statement.FUNC_CALL:
             for arg in expr_node.get("args"):
-                self.__capture_scope(closure, arg)
+                self.__capture_scope(closure, arg, env)
         elif expr in UnaryOps:
-            self.__capture_scope(closure, expr_node.get("op1"))
+            self.__capture_scope(closure, expr_node.get("op1"), env)
         elif expr in BinaryOps:
-            self.__capture_scope(closure, expr_node.get("op1"))
-            self.__capture_scope(closure, expr_node.get("op2"))
+            self.__capture_scope(closure, expr_node.get("op1"), env)
+            self.__capture_scope(closure, expr_node.get("op2"), env)
 
     def __call_func(self, fcall_node: Element, env: list[dict]) -> tuple[Value, ExecStatus]:
         func_name = fcall_node.get("name")
@@ -115,7 +118,7 @@ class Interpreter(InterpreterBase):
 
                 func_node = self.func_table[func_hash]
                 param_names = [arg_node.get("name") for arg_node in func_node.get("args")]
-                arg_values = [Closure(arg, env) for arg in fcall_node.get("args")]
+                arg_values = [self.__create_closure(arg, env) for arg in fcall_node.get("args")]
 
                 self.env.push_env()  # new environment for function call
 
@@ -123,34 +126,32 @@ class Interpreter(InterpreterBase):
                 for param_name, arg_value in zip(param_names, arg_values):
                     self.env.create(param_name, arg_value)
 
-                # if self.trace_output: self.env.print(func_name)  # debug
-
                 self.env.push_block()
-                result, ret = self.__run_statements(func_node.get("statements"))
+                result, state = self.__run_statements(func_node.get("statements"))
                 self.env.pop_block()
 
                 self.env.pop_env()
 
-                return result, ret
+                return result, state
 
     def __call_if(self, if_node: Element, env: list[dict]) -> tuple[Value, ExecStatus]:
-        condition, ret = self.__force_eval(if_node.get("condition"), env)
-        if ret != ExecStatus.CONTINUE:
-            return condition, ret
+        condition, state = self.__force_eval(if_node.get("condition"), env)
+        if state != ExecStatus.CONTINUE:
+            return condition, state
         if condition.type != Type.BOOL:
             super().error(ErrorType.TYPE_ERROR, "If condition must be a boolean")
 
         self.env.push_block()  # new child scope for if statement body
+        result, state = create_value(Type.NIL), ExecStatus.CONTINUE
 
-        result, ret = create_value(Type.NIL), ExecStatus.CONTINUE
         if condition.value:
-            result, ret = self.__run_statements(if_node.get("statements"))
+            result, state = self.__run_statements(if_node.get("statements"))
         elif if_node.get("else_statements"):
-            result, ret = self.__run_statements(if_node.get("else_statements"))
+            result, state = self.__run_statements(if_node.get("else_statements"))
 
         self.env.pop_block()
 
-        return result, ret
+        return result, state
 
     def __call_for(self, for_node: Element, env: list[dict]) -> tuple[Value, ExecStatus]:
         init: Element = for_node.get("init")
@@ -162,50 +163,50 @@ class Interpreter(InterpreterBase):
         if update.elem_type != Statement.ASSIGNMENT:
             super().error(ErrorType.TYPE_ERROR, "For loop update must be an assignment")
 
-        self.__assign(init)
-        result, ret = create_value(Type.NIL), ExecStatus.CONTINUE
+        self.__assign(init, env)
+        result, state = create_value(Type.NIL), ExecStatus.CONTINUE
 
         while True:
-            condition_result, ret = self.__force_eval(condition, env)
-            if ret != ExecStatus.CONTINUE:
-                return condition_result, ret
+            condition_result, state = self.__force_eval(condition, env)
+            if state != ExecStatus.CONTINUE:
+                return condition_result, state
             if condition_result.type != Type.BOOL:
                 super().error(ErrorType.TYPE_ERROR, "For loop condition must be a boolean")
             if condition_result.value is False:
                 break
 
             self.env.push_block()  # new child scope for for loop body
-            result, ret = self.__run_statements(for_node.get("statements"))
+            result, state = self.__run_statements(for_node.get("statements"))
             self.env.pop_block()
-            if ret == ExecStatus.RETURN: break
+            if state == ExecStatus.RETURN: break
 
-            self.__assign(update)
+            self.__assign(update, env)
 
-        return result, ret
+        return result, state
 
     def __call_return(self, return_node: Element, env: list[dict]) -> tuple[Value, ExecStatus]:
-        result = create_value(Type.NIL)
-        if return_node.get("expression"):
-            result = Closure(return_node.get("expression"))
-            self.__capture_scope(result, result.expr)
+        result = create_value(Type.NIL)  # default return value
+        expr = return_node.get("expression")
+        if expr:
+            result = self.__create_closure(expr, env)
 
         return result, ExecStatus.RETURN
 
     def __call_try(self, try_node: Element) -> tuple[Value, ExecStatus]:
         self.env.push_block()
-        result, ret = self.__run_statements(try_node.get("statements"))
+        result, state = self.__run_statements(try_node.get("statements"))
         self.env.pop_block()
 
-        if ret == ExecStatus.RAISE:
+        if state == ExecStatus.RAISE:
             for catch_node in try_node.get("catchers"):
-                if catch_node.get("exception_type") == result.value:
+                if catch_node.get("exception_type") == result.value:  # exception caught
                     self.env.push_block()
-                    result, ret = self.__run_statements(catch_node.get("statements"))
+                    result, state = self.__run_statements(catch_node.get("statements"))
                     self.env.pop_block()
-                    return result, ret
+                    return result, state
 
-        return result, ret
-        
+        return result, state
+
     def __eval_expr(self, expr_node: Element, env: list[dict]) -> tuple[Value, ExecStatus]:
         expr = expr_node.elem_type
         if expr == Type.NIL:
@@ -214,8 +215,9 @@ class Interpreter(InterpreterBase):
             return create_value(expr, expr_node.get("val")), ExecStatus.CONTINUE
         if expr == "var":
             return self.__eval_var(expr_node, env)
-        if expr == Statement.FUNC_CALL:
-            return self.__call_func(expr_node, env)
+        if expr == Statement.FUNC_CALL:  # function call within expression
+            result, ret = self.__call_func(expr_node, env)
+            return result, ExecStatus.CONTINUE if ret != ExecStatus.RAISE else ret
         if expr in UnaryOps:
             return self.__eval_unary_op(expr_node, env)
         if expr in BinaryOps:
@@ -223,8 +225,8 @@ class Interpreter(InterpreterBase):
 
         super().error(ErrorType.TYPE_ERROR, f"Unknown operand type: {expr}")
 
-    def __force_eval(self, expr_node: Element, scope: list[dict]) -> tuple[Value, ExecStatus]:
-        value, state = self.__eval_expr(expr_node, scope)
+    def __force_eval(self, expr_node: Element, env: list[dict]) -> tuple[Value, ExecStatus]:
+        value, state = self.__eval_expr(expr_node, env)
         if isinstance(value, Closure):
             return self.__eval_expr(value.expr, value.scope)
         return value, state
@@ -236,13 +238,8 @@ class Interpreter(InterpreterBase):
         if var_value is None:
             super().error(ErrorType.NAME_ERROR, f"Variable {var_name} not found")
 
-        if isinstance(var_value, Closure): # not evaluated yet
+        if isinstance(var_value, Closure):  # not evaluated yet
             var_value, state = self.__eval_expr(var_value.expr, var_value.scope)
-            if state != ExecStatus.CONTINUE:
-                return var_value, state
-
-        elif isinstance(var_value, Element): # already evaluated
-            var_value, state = self.__eval_expr(var_value, env)
             if state != ExecStatus.CONTINUE:
                 return var_value, state
 
@@ -250,19 +247,19 @@ class Interpreter(InterpreterBase):
         return var_value, state
 
     def __eval_unary_op(self, expr_node: Element, env: list[dict]) -> tuple[Value, ExecStatus]:  # neg, !
-        val, ret = self.__force_eval(expr_node.get("op1"), env)
-        if ret != ExecStatus.CONTINUE: return val, ret
+        value, state = self.__force_eval(expr_node.get("op1"), env)
+        if state != ExecStatus.CONTINUE: return value, state
 
-        op_func = get_operator_lambda(val.type, expr_node.elem_type)
+        op_func = get_operator_lambda(value.type, expr_node.elem_type)
         if op_func is None:
             super().error(ErrorType.TYPE_ERROR, f"Incompatible types for '{expr_node.elem_type}' operation")
 
-        return op_func(val), ExecStatus.CONTINUE
+        return op_func(value), ExecStatus.CONTINUE
 
     def __eval_op(self, expr_node: Element, env: list[dict]) -> tuple[Value, ExecStatus]:
         oper = expr_node.elem_type
-        lhs, ret = self.__force_eval(expr_node.get("op1"), env)
-        if ret != ExecStatus.CONTINUE: return lhs, ret
+        lhs, state = self.__force_eval(expr_node.get("op1"), env)
+        if state != ExecStatus.CONTINUE: return lhs, state
 
         # short-circuiting
         if oper == "&&" and lhs.value is False:
@@ -270,8 +267,8 @@ class Interpreter(InterpreterBase):
         if oper == "||" and lhs.value is True:
             return create_value(Type.BOOL, True), ExecStatus.CONTINUE
 
-        rhs, ret = self.__force_eval(expr_node.get("op2"), env)
-        if ret != ExecStatus.CONTINUE: return rhs, ret
+        rhs, state = self.__force_eval(expr_node.get("op2"), env)
+        if state != ExecStatus.CONTINUE: return rhs, state
 
         # only equality check is allowed for different types
         if oper not in EqualOps and lhs.type != rhs.type:
@@ -290,10 +287,10 @@ class Interpreter(InterpreterBase):
         args = fcall_node.get("args")
         s = ""
         for arg in args:
-            val, ret = self.__force_eval(arg, env)
-            if ret != ExecStatus.CONTINUE:
-                return val, ret
-            printable = get_printable(val)
+            value, state = self.__force_eval(arg, env)
+            if state != ExecStatus.CONTINUE:
+                return value, state
+            printable = get_printable(value)
             if printable is None:
                 super().error(ErrorType.TYPE_ERROR, "Non-printable type for print()")
             s += printable
@@ -306,9 +303,9 @@ class Interpreter(InterpreterBase):
             super().error(ErrorType.NAME_ERROR, "inputi() function got more than one parameter")
 
         if args:
-            arg, ret = self.__force_eval(args[0], env)
-            if ret != ExecStatus.CONTINUE:
-                return arg, ret
+            arg, state = self.__force_eval(args[0], env)
+            if state != ExecStatus.CONTINUE:
+                return arg, state
             prompt = get_printable(arg)
             super().output(prompt)
 
@@ -321,13 +318,15 @@ class Interpreter(InterpreterBase):
             case "inputs":
                 return create_value(Type.STRING, usr_input), ExecStatus.CONTINUE
 
-def find_var(var_name: str, env: list[dict]) -> Element|Closure|None:
+
+def find_var(var_name: str, env: list[dict]) -> Closure | Value | None:
     for scope in reversed(env):
         if var_name in scope:
             return scope[var_name]
     return None
 
-def assign_var(var_name: str, val: Element|Closure, env: list[dict]) -> bool:
+
+def assign_var(var_name: str, val: Closure | Value, env: list[dict]) -> bool:
     for scope in reversed(env):
         if var_name in scope:
             scope[var_name] = val
