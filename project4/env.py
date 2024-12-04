@@ -7,13 +7,13 @@ class EnvironmentManager:
     def __init__(self):
         self.environment = []  # [[{}], [{},{}], ...]
 
-    def get(self, symbol: str) -> Value|Closure|None:
-        """ Get the data associated a variable name. """
-        curr_env = self.environment[-1]
-        for env in reversed(curr_env):
-            if symbol in env:
-                return env[symbol]
-        return None
+    # def get(self, symbol: str) -> Value|Closure|None:
+    #     """ Get the data associated a variable name. """
+    #     curr_env = self.environment[-1]
+    #     for env in reversed(curr_env):
+    #         if symbol in env:
+    #             return env[symbol]
+    #     return None
 
     def assign(self, symbol: str, val: Value|Closure) -> bool:
         """ Assign a value to a variable name. """
@@ -47,15 +47,3 @@ class EnvironmentManager:
 
     def pop_block(self):
         self.environment[-1].pop()
-
-
-    # def print(self, env_name='ENV'):
-    #     print(f"{'=' * 6} {env_name:^12} {'=' * 6}")
-    #     for env in reversed(self.environment[-1]):
-    #         for key, item in env.items():
-    #             self.__print_value(key, item)
-    #         print(f"{'-' * 26}")
-    #     print(f"{'=' * 26}")
-    #
-    # def __print_value(self, key, item, indent=0):
-    #     print(f"|{' ' * indent}  {key:<6}: {item.type} {str(item.value):<{max(0, 12-indent)}}|")

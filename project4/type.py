@@ -1,6 +1,5 @@
 from enum import Enum, auto
 from typing import Optional, Any
-from closure import Closure
 
 
 class Type:
@@ -49,6 +48,7 @@ def get_printable(val: Value) -> str|None:
 
 class Statement:
     VAR_DEF = "vardef"
+    VAR = "var"
     ASSIGNMENT = "="
     FUNC_CALL = "fcall"
     IF_STATEMENT = "if"
@@ -102,4 +102,3 @@ class ExecStatus(Enum):
     CONTINUE = auto()
     RETURN = auto()
     RAISE = auto()
-    ERROR = auto()
