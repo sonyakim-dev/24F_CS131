@@ -7,15 +7,7 @@ class EnvironmentManager:
     def __init__(self):
         self.environment = []  # [[{}], [{},{}], ...]
 
-    # def get(self, symbol: str) -> Value|Closure|None:
-    #     """ Get the data associated a variable name. """
-    #     curr_env = self.environment[-1]
-    #     for env in reversed(curr_env):
-    #         if symbol in env:
-    #             return env[symbol]
-    #     return None
-
-    def assign(self, symbol: str, val: Value|Closure) -> bool:
+    def assign(self, symbol: str, val: Value) -> bool:
         """ Assign a value to a variable name. """
         curr_env = self.environment[-1]
         for env in reversed(curr_env):
@@ -24,7 +16,7 @@ class EnvironmentManager:
                 return True
         return False  # variable not exist
 
-    def create(self, symbol: str, val: Value|Closure = None) -> bool:
+    def create(self, symbol: str, val: Value = None) -> bool:
         """ Declare a variable at the top environment with a given value. Return False if the variable already exists. """
         if val is None: val = create_value(Type.NIL)  # default value
         curr_env = self.environment[-1][-1]

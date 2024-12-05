@@ -45,22 +45,22 @@ class Interpreter(InterpreterBase):
                     self.__var_def(statement)
                 case Statement.ASSIGNMENT:
                     self.__assign(statement, self.env.get_current_env())
-                case Statement.FUNC_CALL: # standalone function call (e.g. print();)
-                    result, ret = self.__call_func(statement, self.env.get_current_env())
-                    if ret == ExecStatus.RAISE:
-                        return result, ret
+                case Statement.FUNC_CALL:  # standalone function call (e.g. print();)
+                    result, state = self.__call_func(statement, self.env.get_current_env())
+                    if state == ExecStatus.RAISE:
+                        return result, state
                 case Statement.IF_STATEMENT:
-                    result, ret = self.__call_if(statement, self.env.get_current_env())
-                    if ret != ExecStatus.CONTINUE:
-                        return result, ret
+                    result, state = self.__call_if(statement, self.env.get_current_env())
+                    if state != ExecStatus.CONTINUE:
+                        return result, state
                 case Statement.FOR_STATEMENT:
-                    result, ret = self.__call_for(statement, self.env.get_current_env())
-                    if ret != ExecStatus.CONTINUE:
-                        return result, ret
+                    result, state = self.__call_for(statement, self.env.get_current_env())
+                    if state != ExecStatus.CONTINUE:
+                        return result, state
                 case Statement.TRY:
-                    result, ret = self.__call_try(statement)
-                    if ret != ExecStatus.CONTINUE:
-                        return result, ret
+                    result, state = self.__call_try(statement)
+                    if state != ExecStatus.CONTINUE:
+                        return result, state
                 case Statement.RAISE:
                     result, _ = self.__force_eval(statement.get("exception_type"), self.env.get_current_env())
                     if result.type != Type.STRING:
@@ -69,7 +69,7 @@ class Interpreter(InterpreterBase):
                 case Statement.RETURN:  # return immediately
                     return self.__call_return(statement, self.env.get_current_env())
                 case _:
-                    pass # lazy evaluation
+                    pass  # lazy evaluation
 
         return create_value(Type.NIL), ExecStatus.CONTINUE
 
@@ -80,17 +80,17 @@ class Interpreter(InterpreterBase):
 
     def __assign(self, assign_node: Element, env: list[dict]) -> None:
         var_name = assign_node.get("name")
-        closure = self.__create_closure(assign_node.get("expression"), env)
-        if not self.env.assign(var_name, closure):
+        value = self.__capture_value(assign_node.get("expression"), env)
+        if not self.env.assign(var_name, value):
             super().error(ErrorType.NAME_ERROR, f"Variable {var_name} has not been defined")
 
-    def __create_closure(self, expr_node: Element, env: list[dict]) -> Closure:
+    def __capture_value(self, expr_node: Element, env: list[dict]) -> Value:
         closure = Closure(expr_node)
         self.__capture_scope(closure, expr_node, env)
-        return closure
+        return Value(Type.CLOSURE, closure)
 
     def __capture_scope(self, closure: Closure, expr_node: Element, env: list[dict]) -> None:
-        """Capture variable scope for closure within environment"""
+        """ Capture variable scope for closure within environment """
         expr = expr_node.elem_type
         if expr == Statement.VAR:
             var_name = expr_node.get("name")
@@ -119,7 +119,7 @@ class Interpreter(InterpreterBase):
 
                 func_node = self.func_table[func_hash]
                 param_names = [arg_node.get("name") for arg_node in func_node.get("args")]
-                arg_values = [self.__create_closure(arg, env) for arg in fcall_node.get("args")]
+                arg_values = [self.__capture_value(arg, env) for arg in fcall_node.get("args")]
 
                 self.env.push_env()  # new environment for function call
 
@@ -186,10 +186,10 @@ class Interpreter(InterpreterBase):
         return result, state
 
     def __call_return(self, return_node: Element, env: list[dict]) -> tuple[Value, ExecStatus]:
-        result = create_value(Type.NIL) # default return value
+        result = create_value(Type.NIL)  # default return value
         expr = return_node.get("expression")
         if expr:
-            result = self.__create_closure(expr, env)
+            result = self.__capture_value(expr, env) # return statement is not eagerly evaluated
 
         return result, ExecStatus.RETURN
 
@@ -200,14 +200,14 @@ class Interpreter(InterpreterBase):
 
         if state == ExecStatus.RAISE:
             for catch_node in try_node.get("catchers"):
-                if catch_node.get("exception_type") == result.value: # exception caught
+                if catch_node.get("exception_type") == result.value:  # exception caught
                     self.env.push_block()
                     result, state = self.__run_statements(catch_node.get("statements"))
                     self.env.pop_block()
                     return result, state
 
         return result, state
-        
+
     def __eval_expr(self, expr_node: Element, env: list[dict]) -> tuple[Value, ExecStatus]:
         expr = expr_node.elem_type
         if expr == Type.NIL:
@@ -216,7 +216,7 @@ class Interpreter(InterpreterBase):
             return create_value(expr, expr_node.get("val")), ExecStatus.CONTINUE
         if expr == Statement.VAR:
             return self.__eval_var(expr_node, env)
-        if expr == Statement.FUNC_CALL: # function call within expression
+        if expr == Statement.FUNC_CALL:  # function call within expression (e.g. x = foo();)
             result, ret = self.__call_func(expr_node, env)
             return result, ExecStatus.CONTINUE if ret != ExecStatus.RAISE else ret
         if expr in UnaryOps:
@@ -228,8 +228,8 @@ class Interpreter(InterpreterBase):
 
     def __force_eval(self, expr_node: Element, env: list[dict]) -> tuple[Value, ExecStatus]:
         value, state = self.__eval_expr(expr_node, env)
-        if isinstance(value, Closure):
-            return self.__eval_expr(value.expr, value.scope)
+        if value.type == Type.CLOSURE:
+            return self.__eval_expr(value.value.expr, value.value.scope)
         return value, state
 
     def __eval_var(self, var_node: Element, env: list[dict]) -> tuple[Value, ExecStatus]:
@@ -239,8 +239,8 @@ class Interpreter(InterpreterBase):
         if var_value is None:
             super().error(ErrorType.NAME_ERROR, f"Variable {var_name} not found")
 
-        if isinstance(var_value, Closure): # not evaluated yet
-            var_value, state = self.__eval_expr(var_value.expr, var_value.scope)
+        if var_value.type == Type.CLOSURE:  # not evaluated yet
+            var_value, state = self.__eval_expr(var_value.value.expr, var_value.value.scope)
             if state != ExecStatus.CONTINUE:
                 return var_value, state
 
@@ -249,7 +249,8 @@ class Interpreter(InterpreterBase):
 
     def __eval_unary_op(self, expr_node: Element, env: list[dict]) -> tuple[Value, ExecStatus]:  # neg, !
         value, state = self.__force_eval(expr_node.get("op1"), env)
-        if state != ExecStatus.CONTINUE: return value, state
+        if state != ExecStatus.CONTINUE:
+            return value, state
 
         op_func = get_operator_lambda(value.type, expr_node.elem_type)
         if op_func is None:
@@ -260,7 +261,8 @@ class Interpreter(InterpreterBase):
     def __eval_op(self, expr_node: Element, env: list[dict]) -> tuple[Value, ExecStatus]:
         oper = expr_node.elem_type
         lhs, state = self.__force_eval(expr_node.get("op1"), env)
-        if state != ExecStatus.CONTINUE: return lhs, state
+        if state != ExecStatus.CONTINUE:
+            return lhs, state
 
         # short-circuiting
         if oper == "&&" and lhs.value is False:
@@ -275,6 +277,7 @@ class Interpreter(InterpreterBase):
         if oper not in EqualOps and lhs.type != rhs.type:
             super().error(ErrorType.TYPE_ERROR, f"Incompatible types for {oper} operation")
 
+        # raise division by zero exception
         if oper == "/" and rhs.value == 0:
             return create_value(Type.STRING, "div0"), ExecStatus.RAISE
 
@@ -319,15 +322,16 @@ class Interpreter(InterpreterBase):
             case "inputs":
                 return create_value(Type.STRING, usr_input), ExecStatus.CONTINUE
 
-def find_var(var_name: str, env: list[dict]) -> Closure|Value|None:
+def find_var(var_name: str, env: list[dict]) -> Value | None:
     for scope in reversed(env):
         if var_name in scope:
             return scope[var_name]
     return None
 
-def assign_var(var_name: str, val: Closure|Value, env: list[dict]) -> bool:
+def assign_var(var_name: str, val: Value, env: list[dict]) -> bool:
     for scope in reversed(env):
         if var_name in scope:
-            scope[var_name] = val
+            scope[var_name].type = val.type
+            scope[var_name].value = val.value
             return True
     return False

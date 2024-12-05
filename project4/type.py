@@ -13,13 +13,19 @@ class Type:
 class Value:
     def __init__(self, type: str, value: Any):
         self._t = type
-        self._v = value
+        self._v = value # value can be a closure object
     @property
     def value(self):
         return self._v
+    @value.setter
+    def value(self, v):
+        self._v = v
     @property
     def type(self):
         return self._t
+    @type.setter
+    def type(self, t):
+        self._t = t
 
 def create_value(t: str, v: Optional[Any] = None) -> Value|None:
     """ Return a Value object with the given Type and value. If value is not provided, then return default value. """

@@ -7,4 +7,4 @@ Professor: Carey Nachenberg
 | Project 1 | 31/31 |
 | Project 2 | 68/68 |
 | Project 3 | 80/80 |
-| Project 4 | 58/59 |
+| Project 4 | 59/59 |
