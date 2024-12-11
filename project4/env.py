@@ -1,5 +1,4 @@
 from type import *
-from closure import Closure
 
 
 class EnvironmentManager:
